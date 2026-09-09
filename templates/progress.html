@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Progress — Gym Progress Tracker{% endblock %}
+{% block nav_progress %}active{% endblock %}
+{% block content %}
+<h1>Historical Progress</h1>
+
+<div class="filters">
+    <label>Exercise
+        <select id="exercise-select"></select>
+    </label>
+    <label>Order in session
+        <select id="order-index-select">
+            <option value="">Any</option>
+        </select>
+    </label>
+    <label>Workout type
+        <select id="workout-type-select">
+            <option value="">All</option>
+        </select>
+    </label>
+    <label>From <input type="date" id="start-date"></label>
+    <label>To <input type="date" id="end-date"></label>
+    <label>Period
+        <select id="period-select">
+            <option value="week">Week</option>
+            <option value="month">Month</option>
+        </select>
+    </label>
+</div>
+
+<section class="chart-section">
+    <h2>Per-Exercise Progress</h2>
+    <p class="hint">Total weight and estimated 1-rep-max (Epley formula) over time.</p>
+    <canvas id="exercise-chart" height="90"></canvas>
+</section>
+
+<section class="chart-section">
+    <h2>Reps at Weight</h2>
+    <p class="hint">Working-set reps over time, colored by the weight used — climbing reps at a plateau weight
+        usually precede the next jump.</p>
+    <canvas id="reps-chart" height="90"></canvas>
+</section>
+
+<section class="chart-section">
+    <h2>Volume Over Time</h2>
+    <p class="hint">Weight &times; reps, summed per period. Reflects the exercise filter above; leave workout type
+        set to "All" to see volume for the whole selected exercise, or clear the exercise filter (top of page) and
+        use workout type to see volume per split.</p>
+    <canvas id="volume-chart" height="90"></canvas>
+</section>
+
+<section class="chart-section">
+    <h2>Workout Frequency</h2>
+    <p class="hint">Sessions per period — useful for seeing training consistency and split changes over time.</p>
+    <canvas id="frequency-chart" height="90"></canvas>
+</section>
+
+<section class="chart-section">
+    <h2>PR Tracker</h2>
+    <p class="hint">Best estimated 1-rep-max ever recorded per exercise, with the date it happened.</p>
+    <table id="pr-table" class="pr-table">
+        <thead>
+            <tr><th>Exercise</th><th>Best weight</th><th>Reps</th><th>Est. 1RM</th><th>Date</th></tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/vendor/chart.umd.min.js"></script>
+<script src="/static/js/progress.js"></script>
+{% endblock %}
