@@ -25,10 +25,14 @@ uvicorn app.main:app --reload
 Then open:
 - `http://127.0.0.1:8000/import` — paste and review workout notes
 - `http://127.0.0.1:8000/progress` — charts and PR tracker
+- `http://127.0.0.1:8000/exercises` — group renamed/varied movements together
 
 The SQLite database is created automatically at `data/gym.db` on first run,
 seeded with the exercise weight-type classifications and split (Push/Pull/
-Legs/Day4) definitions in `app/seed_data.py`.
+Legs/Day4) definitions in `app/seed_data.py`. If you're upgrading an existing
+`data/gym.db` from an earlier version of the app, new columns/tables are
+added automatically on startup (`app/database.py:run_migrations`) — no need
+to delete the database, existing sessions are preserved.
 
 ## Running tests
 
@@ -98,20 +102,69 @@ Barbell row: 40: 8,8
   workout type per session, and nothing about auto-classification is
   treated as ground truth.
 
+## Additional raw-note formats supported
+
+Beyond the basic `name: weight: reps` shape, the parser also handles:
+
+- **Per-set weight changes.** `Underhand rows: 175: 6, 160: 8` is a 175lb
+  set of 6 followed by a 160lb set of 8 — any set can override the weight
+  for itself and every set after it on the same line, not just the first.
+- **"Plate" notation.** `RDL: Plate: 8, 7, 5` treats "Plate" as 45lb (one
+  45lb plate per side); `Flat chest press: Plate+15: 8, Plate+10: 8` is
+  45+15=60lb then 45+10=55lb. This combines with per-set overrides, so
+  `Plate+15: 8, Plate+10: 8` works as shown.
+- **Plate-loaded machines with no separate bar** (`plate_loaded_per_side`
+  weight type) — total load is `weight * 2`, unlike `barbell_plate_per_side`
+  which adds a 45lb bar. Classify a plate-loaded machine as this type
+  (rather than barbell) during review or on the Manage Exercises page.
+- **Bodyweight movements with no weight field at all**
+  (`bodyweight_fixed` weight type) — `Pull ups: 8, 7, 6` has no weight
+  number in the notation, so it's tracked at a fixed assumed bodyweight
+  (160lb by default, shown in the "Bar/BW wt." column during review and
+  editable there, remembered per-exercise from then on).
+- **Free-text session notes.** A line that's neither a date nor an exercise
+  — whether on its own (like a date line) or glued directly above the
+  workout with no blank line — is attached to the session that follows as a
+  note, e.g. a `California - No straps:` header before that day's
+  exercises. Edit or add a note for any session in the review screen; it's
+  saved with the session (`sessions.note`) as context for later, and
+  doesn't otherwise affect parsing or calculations.
+
+## Grouping exercises for trend continuity
+
+Different names or machines for the same movement (e.g. "Flat chest press"
+vs. "Barbell bench press", or "Dumbbell curl" vs. "Preacher curl") split
+progress trends across names by default, since each is stored as its own
+`exercises` row. The **Manage Exercises** page (`/exercises`) lists every
+exercise name the parser has ever seen and lets you group any of them
+together; the Progress page's exercise dropdown then shows each group as one
+combined entry, aggregating the weight/1RM trend, reps-at-weight, and volume
+charts across every exercise in the group. Grouping only changes how charts
+aggregate — it never edits or merges the underlying saved sets. Four groups
+are seeded from the exact pairs given at kickoff (Chest Press, Incline Chest
+Press, Shoulder Press, Bicep Curl) in `app/seed_data.py`; add more as you
+find other historical naming variants during backfill — the Manage Exercises
+page is meant to be a preliminary pass you can run before (or during) a big
+backfill, not a one-time setup step.
+
 ## What's implemented vs. deferred
 
 Implemented (phases 1–3, 5, and part of 6 from the original build plan):
-- Data model (`exercises`, `sessions`, `session_exercises`, `sets`,
-  `split_config`)
-- Shorthand parser with unit tests
+- Data model (`exercises`, `exercise_groups`, `sessions`, `session_exercises`,
+  `sets`, `split_config`)
+- Shorthand parser with unit tests, including per-set weight overrides,
+  "Plate"/"Plate+N" notation, plate-loaded machines, bodyweight movements
+  with no weight field, and free-text session notes
 - Paste → parse → **editable review table** → save flow, including
-  one-time weight-type classification for new exercises and workout-type
-  override
+  one-time weight-type classification for new exercises, workout-type
+  override, and an editable per-session note
+- Manage Exercises page to group renamed/varied movements for trend
+  continuity
 - Progress page: per-exercise weight/est.-1RM trend, reps-at-weight trend,
   volume-over-time (bar per week/month), workout frequency, and a PR
   tracker (best estimated 1RM ever per exercise, via the Epley formula),
-  all filterable by exercise, order-in-session, workout type, and date
-  range
+  all filterable by exercise-or-group, order-in-session, workout type, and
+  date range
 
 Deliberately deferred (flagged as secondary/optional/nice-to-have in the
 original brief, to keep the first pass focused):
@@ -142,3 +195,8 @@ things worth confirming once the real 2–3 years of notes are on hand:
    placeholders (only a Push day was available at kickoff) — worth a pass
    once real data shows what those days actually look like. Low risk either
    way since workout-type is always user-overridable per session.
+3. **"Flat bench press" (from the original sample) probably belongs in the
+   "Chest Press" group** alongside "Barbell bench press" — they read as the
+   same lift under two different names, but that wasn't explicitly
+   confirmed, so it was left out of the seeded groups. Add it via the
+   Manage Exercises page if so.

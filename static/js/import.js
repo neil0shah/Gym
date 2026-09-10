@@ -13,6 +13,14 @@ function escapeHtml(s) {
     return div.innerHTML;
 }
 
+function hasFixedWeight(weightType) {
+    return weightType === 'barbell_plate_per_side' || weightType === 'bodyweight_fixed';
+}
+
+function defaultFixedWeight(weightType) {
+    return weightType === 'bodyweight_fixed' ? 160 : 45;
+}
+
 parseBtn.addEventListener('click', async () => {
     const text = rawInput.value;
     if (!text.trim()) return;
@@ -81,6 +89,8 @@ function renderReview(data) {
         });
         workoutSelect.value = session.workout_type_guess || '';
 
+        card.querySelector('.s-note').value = session.note || '';
+
         const tbody = card.querySelector('.exercise-rows');
         session.exercises.forEach((ex, eIdx) => {
             const exNode = exerciseTpl.content.cloneNode(true);
@@ -92,9 +102,13 @@ function renderReview(data) {
             const wtSelect = row.querySelector('.ex-weight-type');
             wtSelect.value = ex.weight_type_guess;
             const barInput = row.querySelector('.ex-bar-weight');
-            barInput.hidden = wtSelect.value !== 'barbell_plate_per_side';
+            barInput.hidden = !hasFixedWeight(wtSelect.value);
+            barInput.value = ex.bar_weight_guess ?? defaultFixedWeight(wtSelect.value);
             wtSelect.addEventListener('change', () => {
-                barInput.hidden = wtSelect.value !== 'barbell_plate_per_side';
+                barInput.hidden = !hasFixedWeight(wtSelect.value);
+                if (!barInput.hidden && !barInput.value) {
+                    barInput.value = defaultFixedWeight(wtSelect.value);
+                }
             });
 
             const setsCell = row.querySelector('.sets-cell');
@@ -128,6 +142,7 @@ saveBtn.addEventListener('click', async () => {
         const confidence = card.querySelector('.confidence-badge').classList.contains('confirmed')
             ? 'confirmed' : 'estimated';
         const workoutType = card.querySelector('.s-workout-type').value || null;
+        const note = card.querySelector('.s-note').value.trim() || null;
         const rawText = card.querySelector('.raw-text').textContent;
 
         const exercises = [];
@@ -135,8 +150,8 @@ saveBtn.addEventListener('click', async () => {
             const name = row.querySelector('.ex-name').value.trim();
             const weightType = row.querySelector('.ex-weight-type').value;
             const barWeightInput = row.querySelector('.ex-bar-weight');
-            const barWeight = weightType === 'barbell_plate_per_side'
-                ? parseFloat(barWeightInput.value || '45') : null;
+            const barWeight = hasFixedWeight(weightType)
+                ? parseFloat(barWeightInput.value || defaultFixedWeight(weightType)) : null;
 
             const sets = [];
             row.querySelectorAll('.set-group').forEach((group, setIdx) => {
@@ -168,6 +183,7 @@ saveBtn.addEventListener('click', async () => {
             date_confidence: confidence,
             workout_type: workoutType,
             raw_text: rawText,
+            note,
             exercises,
         });
     });

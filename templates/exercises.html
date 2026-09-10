@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Manage Exercises — Gym Progress Tracker{% endblock %}
+{% block nav_exercises %}active{% endblock %}
+{% block content %}
+<h1>Manage Exercises</h1>
+<p class="hint">Different names/machines for the same movement (e.g. "Flat chest press" and "Barbell bench press")
+    split your progress trends across names. Group them here so charts on the Progress page combine them into one
+    continuous trend. This doesn't change any saved data — it only changes how exercises are grouped for charting.</p>
+
+<section class="chart-section">
+    <h2>Existing groups</h2>
+    <table class="pr-table" id="groups-table">
+        <thead><tr><th>Group</th><th>Members</th><th></th></tr></thead>
+        <tbody></tbody>
+    </table>
+    <p class="hint" id="no-groups-msg" hidden>No groups yet — select exercises below and create one.</p>
+</section>
+
+<section class="chart-section">
+    <h2>All exercises</h2>
+    <div class="actions">
+        <input type="text" id="new-group-name" placeholder="New group name">
+        <button id="create-group-btn" class="primary">Create group from selected</button>
+    </div>
+    <div class="actions">
+        <select id="existing-group-select"><option value="">Add selected to existing group…</option></select>
+        <button id="add-to-group-btn">Add</button>
+        <button id="ungroup-btn">Remove selected from their group</button>
+        <span id="exercises-status" class="status"></span>
+    </div>
+    <table class="exercise-table" id="exercises-table">
+        <thead>
+            <tr>
+                <th><input type="checkbox" id="select-all"></th>
+                <th>Exercise</th>
+                <th>Weight type</th>
+                <th>Group</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/exercises.js"></script>
+{% endblock %}

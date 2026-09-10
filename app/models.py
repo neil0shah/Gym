@@ -10,13 +10,32 @@ from app.database import Base
 BARBELL_PLATE_PER_SIDE = "barbell_plate_per_side"
 DUMBBELL_EACH = "dumbbell_each"
 TOTAL_WEIGHT = "total_weight"
-WEIGHT_TYPES = {BARBELL_PLATE_PER_SIDE, DUMBBELL_EACH, TOTAL_WEIGHT}
+PLATE_LOADED_PER_SIDE = "plate_loaded_per_side"
+BODYWEIGHT_FIXED = "bodyweight_fixed"
+WEIGHT_TYPES = {
+    BARBELL_PLATE_PER_SIDE, DUMBBELL_EACH, TOTAL_WEIGHT,
+    PLATE_LOADED_PER_SIDE, BODYWEIGHT_FIXED,
+}
 
 # date_confidence values
 CONFIRMED = "confirmed"
 ESTIMATED = "estimated"
 
 DEFAULT_BAR_WEIGHT = 45.0
+DEFAULT_BODYWEIGHT_ESTIMATE = 160.0
+
+
+class ExerciseGroup(Base):
+    """A user-defined bucket combining exercise names that are really the same
+    movement (e.g. "Flat chest press" and "Barbell bench press"), so progress
+    trends can be tracked across renamed/varied movements over time.
+    """
+    __tablename__ = "exercise_groups"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, unique=True)
+
+    exercises = relationship("Exercise", back_populates="group")
 
 
 class Exercise(Base):
@@ -25,16 +44,23 @@ class Exercise(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True, index=True)
     weight_type = Column(String, nullable=False)
-    bar_weight = Column(Float, nullable=True)  # only meaningful for barbell_plate_per_side
+    # Dual-purpose fixed-weight override: bar weight for barbell_plate_per_side
+    # (default 45), assumed bodyweight for bodyweight_fixed (default 160).
+    # Unused for dumbbell_each, total_weight, and plate_loaded_per_side.
+    bar_weight = Column(Float, nullable=True)
     category = Column(String, nullable=True)  # e.g. muscle group, optional
+    group_id = Column(Integer, ForeignKey("exercise_groups.id"), nullable=True)
 
     session_exercises = relationship("SessionExercise", back_populates="exercise")
+    group = relationship("ExerciseGroup", back_populates="exercises")
 
     def total_weight_for(self, weight_recorded: float) -> float:
         if self.weight_type == BARBELL_PLATE_PER_SIDE:
             bar = self.bar_weight if self.bar_weight is not None else DEFAULT_BAR_WEIGHT
             return weight_recorded * 2 + bar
-        # dumbbell_each and total_weight are both tracked as-is
+        if self.weight_type == PLATE_LOADED_PER_SIDE:
+            return weight_recorded * 2
+        # dumbbell_each, total_weight, and bodyweight_fixed are all tracked as-is
         return weight_recorded
 
 
@@ -46,6 +72,7 @@ class Session(Base):
     date_confidence = Column(String, nullable=False, default=ESTIMATED)
     workout_type = Column(String, nullable=True, index=True)  # Push/Pull/Legs/Day4/other
     raw_note_text = Column(Text, nullable=True)
+    note = Column(Text, nullable=True)  # free-text context, e.g. "California - No straps"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     session_exercises = relationship(

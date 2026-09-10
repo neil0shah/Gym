@@ -14,6 +14,21 @@ date. Later undated blocks in the same run are assumed to be on subsequent
 days and are marked as "estimated" so the review UI can surface them for
 correction.
 
+A block's first line can also be a free-text note ("California - No straps")
+rather than a date, whether it sits in its own blank-line-separated block
+(like a date line) or is glued directly above the workout lines with no
+blank line at all. Either way it's attached to the session built from the
+lines that follow it.
+
+Within a workout line, a set can override the weight for itself and every
+set after it in the same line: "Underhand rows: 175: 6, 160: 8" is a 175lb
+set of 6 followed by a 160lb set of 8. Weight tokens can also be written as
+"Plate" (a 45lb plate per side) or "Plate+15" (45+15=60 per side).
+
+A line can also omit the weight field entirely for bodyweight movements:
+"Pull ups: 8, 7, 6" is tracked at a fixed assumed bodyweight (default 160lb,
+overridable per exercise) since the notation never records real weight.
+
 This module is deliberately dependency-light (dataclasses only) so it can
 be unit tested without spinning up the database or web app.
 """
@@ -24,19 +39,34 @@ from typing import Dict, List, Optional, Tuple
 
 from dateutil import parser as dateutil_parser
 
-from app.models import BARBELL_PLATE_PER_SIDE, DUMBBELL_EACH, TOTAL_WEIGHT, CONFIRMED, ESTIMATED
+from app.models import (
+    BARBELL_PLATE_PER_SIDE, DUMBBELL_EACH, TOTAL_WEIGHT,
+    PLATE_LOADED_PER_SIDE, BODYWEIGHT_FIXED,
+    DEFAULT_BAR_WEIGHT, DEFAULT_BODYWEIGHT_ESTIMATE,
+    CONFIRMED, ESTIMATED,
+)
 
+# name : weight : sets  (sets may itself contain further "weight: reps" overrides)
 EXERCISE_LINE_RE = re.compile(
-    r"^\s*(?P<name>[^:]+?)\s*:\s*(?P<weight>\d+(?:\.\d+)?)\s*:\s*(?P<reps>.+?)\s*$"
+    r"^\s*(?P<name>[^:]+?)\s*:\s*(?P<weight>[^:]+?)\s*:\s*(?P<sets>.+?)\s*$"
+)
+# name : reps  (bodyweight movements with no weight field at all)
+BODYWEIGHT_LINE_RE = re.compile(
+    r"^\s*(?P<name>[^:]+?)\s*:\s*(?P<reps>[^:]+?)\s*$"
 )
 REP_TOKEN_RE = re.compile(r"^\s*(?P<full>\d+)\s*(?:\+\s*(?P<partial>\d+))?\s*$")
+PLATE_TOKEN_RE = re.compile(r"^plate\s*(?:\+\s*(?P<extra>\d+(?:\.\d+)?))?$", re.IGNORECASE)
+NUMBER_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)?$")
 
 # Heuristics used only when an exercise hasn't been classified before.
 BARBELL_KEYWORDS = [
     "bench press", "squat", "deadlift", "overhead press", "barbell row",
-    "bent over row", "skull crusher", "front squat", "hip thrust",
+    "bent over row", "skull crusher", "front squat", "hip thrust", "rdl",
 ]
 DUMBBELL_KEYWORDS = ["dumbbell", "db "]
+
+# lowercased exercise name -> (canonical_name, weight_type, bar_weight)
+KnownExercises = Dict[str, Tuple[str, str, Optional[float]]]
 
 
 @dataclass
@@ -54,6 +84,7 @@ class ParsedExercise:
     order_index: int
     weight_type_guess: str
     is_unrecognized: bool
+    bar_weight_guess: Optional[float] = None
     sets: List[ParsedSet] = field(default_factory=list)
 
 
@@ -63,6 +94,7 @@ class ParsedSession:
     date_confidence: str
     workout_type_guess: Optional[str]
     raw_text: str
+    note: Optional[str] = None
     exercises: List[ParsedExercise] = field(default_factory=list)
 
 
@@ -71,6 +103,14 @@ class ParseResult:
     sessions: List[ParsedSession]
     unrecognized_exercise_names: List[str]
     warnings: List[str]
+
+
+@dataclass
+class _RawLine:
+    kind: str  # "weighted" or "bodyweight"
+    name: str
+    weight_token: Optional[str]  # None for bodyweight
+    sets_str: str
 
 
 def _split_blocks(raw_text: str) -> List[List[str]]:
@@ -88,16 +128,14 @@ def _split_blocks(raw_text: str) -> List[List[str]]:
     return blocks
 
 
-def _classify_lines(lines: List[str]) -> Tuple[List[Tuple[str, str, str]], List[str]]:
-    exercise_lines = []
-    bad_lines = []
-    for line in lines:
-        m = EXERCISE_LINE_RE.match(line)
-        if m:
-            exercise_lines.append((m.group("name"), m.group("weight"), m.group("reps")))
-        else:
-            bad_lines.append(line)
-    return exercise_lines, bad_lines
+def _classify_line(line: str) -> Optional[_RawLine]:
+    m = EXERCISE_LINE_RE.match(line)
+    if m:
+        return _RawLine("weighted", m.group("name"), m.group("weight"), m.group("sets"))
+    m = BODYWEIGHT_LINE_RE.match(line)
+    if m:
+        return _RawLine("bodyweight", m.group("name"), None, m.group("reps"))
+    return None
 
 
 _YEAR_TOKEN_RE = re.compile(r"\b(19|20)\d{2}\b")
@@ -117,6 +155,18 @@ def _try_parse_date(line: str, fallback_year: int) -> Tuple[Optional[date], int]
         except (ValueError, OverflowError):
             continue
     return None, fallback_year
+
+
+def parse_weight_token(token: str) -> Optional[float]:
+    """Parse a weight token: a plain number, "Plate" (=45), or "Plate+15" (=45+15)."""
+    token = token.strip()
+    if NUMBER_TOKEN_RE.match(token):
+        return float(token)
+    m = PLATE_TOKEN_RE.match(token)
+    if m:
+        extra = float(m.group("extra")) if m.group("extra") else 0.0
+        return DEFAULT_BAR_WEIGHT + extra
+    return None
 
 
 def _guess_weight_type(name: str) -> str:
@@ -148,15 +198,151 @@ def _guess_split(
     return best_type if best_overlap > 0 else None
 
 
+def _track_unrecognized(key: str, name: str, unrecognized_seen: set, unrecognized_order: List[str]) -> None:
+    if key not in unrecognized_seen:
+        unrecognized_seen.add(key)
+        unrecognized_order.append(name)
+
+
+def _build_weighted_exercise(
+    raw: _RawLine,
+    idx: int,
+    known_exercises: KnownExercises,
+    unrecognized_seen: set,
+    unrecognized_order: List[str],
+    warnings: List[str],
+    block_text: str,
+) -> Optional[ParsedExercise]:
+    name = raw.name.strip()
+    key = name.lower()
+    known = known_exercises.get(key)
+    is_unrecognized = known is None
+    if known is not None:
+        canonical_name, weight_type, _known_bar_weight = known
+    else:
+        canonical_name = name
+        weight_type = _guess_weight_type(name)
+        _track_unrecognized(key, name, unrecognized_seen, unrecognized_order)
+
+    current_weight = parse_weight_token(raw.weight_token)
+    if current_weight is None:
+        warnings.append(
+            f"Could not parse weight {raw.weight_token!r} for {name!r} in block: {block_text!r}"
+        )
+        return None
+
+    bar_weight_guess = None
+    if weight_type == BARBELL_PLATE_PER_SIDE:
+        bar_weight_guess = _known_bar_weight if known is not None and _known_bar_weight is not None else DEFAULT_BAR_WEIGHT
+
+    sets: List[ParsedSet] = []
+    for set_idx, raw_token in enumerate(raw.sets_str.split(",")):
+        token = raw_token.strip()
+        if ":" in token:
+            weight_part, _, reps_part = token.partition(":")
+            new_weight = parse_weight_token(weight_part)
+            if new_weight is None:
+                warnings.append(
+                    f"Could not parse weight override {weight_part!r} for {name!r} in block: {block_text!r}"
+                )
+                continue
+            current_weight = new_weight
+            reps_part = reps_part.strip()
+        else:
+            reps_part = token
+
+        m = REP_TOKEN_RE.match(reps_part)
+        if not m:
+            warnings.append(
+                f"Could not parse rep token {reps_part!r} for {name!r} in block: {block_text!r}"
+            )
+            continue
+        full = int(m.group("full"))
+        partial = int(m.group("partial")) if m.group("partial") else None
+        sets.append(ParsedSet(
+            set_number=set_idx + 1,
+            weight_recorded=current_weight,
+            reps_full=full,
+            reps_partial=partial,
+            raw_rep_string=token,
+        ))
+
+    if not sets:
+        return None
+
+    return ParsedExercise(
+        name=canonical_name,
+        order_index=idx,
+        weight_type_guess=weight_type,
+        is_unrecognized=is_unrecognized,
+        bar_weight_guess=bar_weight_guess,
+        sets=sets,
+    )
+
+
+def _build_bodyweight_exercise(
+    raw: _RawLine,
+    idx: int,
+    known_exercises: KnownExercises,
+    unrecognized_seen: set,
+    unrecognized_order: List[str],
+    warnings: List[str],
+    block_text: str,
+) -> Optional[ParsedExercise]:
+    name = raw.name.strip()
+    key = name.lower()
+    known = known_exercises.get(key)
+    is_unrecognized = known is None
+    if known is not None:
+        canonical_name, weight_type, known_bar_weight = known
+        assumed_weight = known_bar_weight if known_bar_weight is not None else DEFAULT_BODYWEIGHT_ESTIMATE
+    else:
+        canonical_name = name
+        weight_type = BODYWEIGHT_FIXED
+        assumed_weight = DEFAULT_BODYWEIGHT_ESTIMATE
+        _track_unrecognized(key, name, unrecognized_seen, unrecognized_order)
+
+    sets: List[ParsedSet] = []
+    for set_idx, raw_token in enumerate(raw.sets_str.split(",")):
+        token = raw_token.strip()
+        m = REP_TOKEN_RE.match(token)
+        if not m:
+            warnings.append(
+                f"Could not parse rep token {token!r} for {name!r} in block: {block_text!r}"
+            )
+            continue
+        full = int(m.group("full"))
+        partial = int(m.group("partial")) if m.group("partial") else None
+        sets.append(ParsedSet(
+            set_number=set_idx + 1,
+            weight_recorded=assumed_weight,
+            reps_full=full,
+            reps_partial=partial,
+            raw_rep_string=token,
+        ))
+
+    if not sets:
+        return None
+
+    return ParsedExercise(
+        name=canonical_name,
+        order_index=idx,
+        weight_type_guess=weight_type,
+        is_unrecognized=is_unrecognized,
+        bar_weight_guess=assumed_weight,
+        sets=sets,
+    )
+
+
 def parse_notes(
     raw_text: str,
-    known_exercises: Dict[str, Tuple[str, str]],
+    known_exercises: KnownExercises,
     split_config: Optional[List[Tuple[str, set, Optional[date], Optional[date]]]] = None,
     today: Optional[date] = None,
 ) -> ParseResult:
     """Parse raw shorthand text into structured sessions.
 
-    known_exercises: lowercased exercise name -> (canonical_name, weight_type)
+    known_exercises: lowercased exercise name -> (canonical_name, weight_type, bar_weight)
     split_config: list of (workout_type, {lowercased exercise names}, start_date, end_date)
     """
     split_config = split_config or []
@@ -170,24 +356,36 @@ def parse_notes(
     fallback_year = (today or date.today()).year
     current_date: Optional[date] = None
     blocks_since_date = 0
+    pending_note: Optional[str] = None
 
     for block_lines in blocks:
         block_text = "\n".join(block_lines)
-        exercise_tuples, bad_lines = _classify_lines(block_lines)
+        line_results = [_classify_line(line) for line in block_lines]
 
-        if len(block_lines) == 1 and not exercise_tuples:
-            parsed_date, fallback_year = _try_parse_date(block_lines[0], fallback_year)
+        # A block's first line that doesn't parse as an exercise, followed only
+        # by lines that do, is a header (date or free-text note) for the
+        # workout that follows it — whether that workout is in this same block
+        # (glued, no blank line) or, when the header is the whole block, in the
+        # next block (the classic blank-line-separated date-line convention).
+        if line_results and line_results[0] is None and all(r is not None for r in line_results[1:]):
+            header_line = block_lines[0]
+            raw_lines = line_results[1:]
+            parsed_date, fallback_year = _try_parse_date(header_line, fallback_year)
             if parsed_date is not None:
                 current_date = parsed_date
                 blocks_since_date = 0
             else:
-                warnings.append(f"Unrecognized line (not a date or exercise): {block_lines[0]!r}")
-            continue
+                pending_note = header_line.strip().rstrip(":").strip()
+            if not raw_lines:
+                continue
+        else:
+            raw_lines = line_results
+            for line, result in zip(block_lines, line_results):
+                if result is None:
+                    warnings.append(f"Unrecognized line in workout block: {line!r}")
 
-        for bl in bad_lines:
-            warnings.append(f"Unrecognized line in workout block: {bl!r}")
-
-        if not exercise_tuples:
+        raw_lines = [r for r in raw_lines if r is not None]
+        if not raw_lines:
             continue
 
         if current_date is None:
@@ -203,48 +401,18 @@ def parse_notes(
 
         exercises: List[ParsedExercise] = []
         exercise_names_lower = set()
-        for idx, (raw_name, weight_str, reps_str) in enumerate(exercise_tuples):
-            name = raw_name.strip()
-            key = name.lower()
-            exercise_names_lower.add(key)
-            known = known_exercises.get(key)
-            if known is not None:
-                canonical_name, weight_type = known
-                is_unrecognized = False
+        for idx, raw in enumerate(raw_lines):
+            exercise_names_lower.add(raw.name.strip().lower())
+            if raw.kind == "weighted":
+                built = _build_weighted_exercise(
+                    raw, idx, known_exercises, unrecognized_seen, unrecognized_order, warnings, block_text,
+                )
             else:
-                canonical_name = name
-                weight_type = _guess_weight_type(name)
-                is_unrecognized = True
-                if key not in unrecognized_seen:
-                    unrecognized_seen.add(key)
-                    unrecognized_order.append(name)
-
-            weight = float(weight_str)
-            sets: List[ParsedSet] = []
-            for set_idx, rep_token in enumerate(reps_str.split(",")):
-                m = REP_TOKEN_RE.match(rep_token)
-                if not m:
-                    warnings.append(
-                        f"Could not parse rep token {rep_token!r} for {name!r} in block: {block_text!r}"
-                    )
-                    continue
-                full = int(m.group("full"))
-                partial = int(m.group("partial")) if m.group("partial") else None
-                sets.append(ParsedSet(
-                    set_number=set_idx + 1,
-                    weight_recorded=weight,
-                    reps_full=full,
-                    reps_partial=partial,
-                    raw_rep_string=rep_token.strip(),
-                ))
-
-            exercises.append(ParsedExercise(
-                name=canonical_name,
-                order_index=idx,
-                weight_type_guess=weight_type,
-                is_unrecognized=is_unrecognized,
-                sets=sets,
-            ))
+                built = _build_bodyweight_exercise(
+                    raw, idx, known_exercises, unrecognized_seen, unrecognized_order, warnings, block_text,
+                )
+            if built is not None:
+                exercises.append(built)
 
         workout_type_guess = _guess_split(exercise_names_lower, session_date, split_config)
 
@@ -253,8 +421,10 @@ def parse_notes(
             date_confidence=session_confidence,
             workout_type_guess=workout_type_guess,
             raw_text=block_text,
+            note=pending_note,
             exercises=exercises,
         ))
+        pending_note = None
 
     return ParseResult(
         sessions=sessions,

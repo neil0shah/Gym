@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from datetime import date
 
 from sqlalchemy.orm import Session as DBSession
@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session as DBSession
 from app.models import Exercise, SplitConfigEntry
 
 
-def get_known_exercises(db: DBSession) -> Dict[str, Tuple[str, str]]:
-    """lowercased exercise name -> (canonical name, weight_type)"""
-    return {e.name.lower(): (e.name, e.weight_type) for e in db.query(Exercise).all()}
+def get_known_exercises(db: DBSession) -> Dict[str, Tuple[str, str, Optional[float]]]:
+    """lowercased exercise name -> (canonical name, weight_type, bar_weight)"""
+    return {e.name.lower(): (e.name, e.weight_type, e.bar_weight) for e in db.query(Exercise).all()}
 
 
 def get_split_config(db: DBSession) -> List[Tuple[str, set, date, date]]:

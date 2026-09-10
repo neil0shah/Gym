@@ -135,6 +135,13 @@ button.primary:disabled { opacity: 0.5; cursor: default; }
     font-size: 0.9em;
 }
 
+.note-field {
+    flex: 1 1 220px;
+}
+.note-field input {
+    width: 100%;
+}
+
 .confidence-badge {
     font-size: 0.75em;
     padding: 3px 8px;

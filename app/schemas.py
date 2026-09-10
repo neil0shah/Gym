@@ -21,6 +21,7 @@ class ExerciseOut(BaseModel):
     order_index: int
     weight_type_guess: str
     is_unrecognized: bool
+    bar_weight_guess: Optional[float] = None
     sets: List[SetOut]
 
 
@@ -29,6 +30,7 @@ class SessionOut(BaseModel):
     date_confidence: str
     workout_type_guess: Optional[str]
     raw_text: str
+    note: Optional[str] = None
     exercises: List[ExerciseOut]
 
 
@@ -60,6 +62,7 @@ class SaveSessionIn(BaseModel):
     date_confidence: str
     workout_type: Optional[str] = None
     raw_text: Optional[str] = None
+    note: Optional[str] = None
     exercises: List[SaveExerciseIn]
 
 
@@ -77,10 +80,30 @@ class ExerciseListItem(BaseModel):
     id: int
     name: str
     weight_type: str
+    bar_weight: Optional[float] = None
     category: Optional[str] = None
+    group_id: Optional[int] = None
+    group_name: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class ExerciseGroupItem(BaseModel):
+    id: int
+    name: str
+    exercise_ids: List[int]
+
+
+class ExerciseGroupCreate(BaseModel):
+    name: str
+    exercise_ids: List[int] = []
+
+
+class ExerciseGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    add_exercise_ids: List[int] = []
+    remove_exercise_ids: List[int] = []
 
 
 class ProgressPoint(BaseModel):

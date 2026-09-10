@@ -19,13 +19,22 @@ function qs(params) {
 }
 
 async function loadFilterOptions() {
-    const [exercises, workoutTypes] = await Promise.all([
+    const [exercises, groups, workoutTypes] = await Promise.all([
         fetch('/api/exercises').then((r) => r.json()),
+        fetch('/api/exercise_groups').then((r) => r.json()),
         fetch('/api/workout_types').then((r) => r.json()),
     ]);
 
-    exerciseSelect.innerHTML = '<option value="">All exercises</option>' +
-        exercises.map((e) => `<option value="${e.id}">${e.name}</option>`).join('');
+    // Grouped exercises (see Manage Exercises) show up as one combined entry;
+    // only ungrouped exercises are listed individually.
+    const groupOptions = groups
+        .map((g) => `<option value="group:${g.id}">${g.name} (group)</option>`)
+        .join('');
+    const ungroupedOptions = exercises
+        .filter((e) => !e.group_id)
+        .map((e) => `<option value="exercise:${e.id}">${e.name}</option>`)
+        .join('');
+    exerciseSelect.innerHTML = '<option value="">All exercises</option>' + groupOptions + ungroupedOptions;
 
     workoutTypeSelect.innerHTML = '<option value="">All</option>' +
         workoutTypes.map((wt) => `<option value="${wt}">${wt}</option>`).join('');
@@ -46,8 +55,10 @@ function ordinalSuffix(n) {
 }
 
 function currentFilters() {
+    const [kind, id] = (exerciseSelect.value || '').split(':');
     return {
-        exercise_id: exerciseSelect.value || null,
+        exercise_id: kind === 'exercise' ? id : null,
+        group_id: kind === 'group' ? id : null,
         order_index: orderIndexSelect.value || null,
         workout_type: workoutTypeSelect.value || null,
         start_date: startDateInput.value || null,
@@ -69,7 +80,7 @@ async function refreshExerciseCharts(filters) {
     const exerciseCtx = document.getElementById('exercise-chart');
     const repsCtx = document.getElementById('reps-chart');
 
-    if (!filters.exercise_id) {
+    if (!filters.exercise_id && !filters.group_id) {
         if (exerciseChart) { exerciseChart.destroy(); exerciseChart = null; }
         if (repsChart) { repsChart.destroy(); repsChart = null; }
         drawEmptyMessage(exerciseCtx, 'Pick a specific exercise above to see its progress.');
@@ -77,7 +88,10 @@ async function refreshExerciseCharts(filters) {
         return;
     }
 
-    const points = await fetch(`/api/progress/exercise/${filters.exercise_id}${qs({
+    const endpoint = filters.group_id
+        ? `/api/progress/group/${filters.group_id}`
+        : `/api/progress/exercise/${filters.exercise_id}`;
+    const points = await fetch(`${endpoint}${qs({
         start_date: filters.start_date, end_date: filters.end_date,
         order_index: filters.order_index, workout_type: filters.workout_type,
     })}`).then((r) => r.json());
@@ -157,7 +171,7 @@ function drawEmptyMessage(canvas, message) {
 
 async function refreshVolumeChart(filters) {
     const points = await fetch(`/api/progress/volume${qs({
-        exercise_id: filters.exercise_id, workout_type: filters.workout_type,
+        exercise_id: filters.exercise_id, group_id: filters.group_id, workout_type: filters.workout_type,
         start_date: filters.start_date, end_date: filters.end_date, period: filters.period,
     })}`).then((r) => r.json());
 

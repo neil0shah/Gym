@@ -12,8 +12,8 @@ from datetime import date
 from sqlalchemy.orm import Session as DBSession
 
 from app.models import (
-    Exercise, SplitConfigEntry,
-    BARBELL_PLATE_PER_SIDE, DUMBBELL_EACH, TOTAL_WEIGHT,
+    Exercise, ExerciseGroup, SplitConfigEntry,
+    BARBELL_PLATE_PER_SIDE, DUMBBELL_EACH, TOTAL_WEIGHT, PLATE_LOADED_PER_SIDE,
 )
 
 # Exercise name -> weight_type, seeded from the sample Push day + common gym
@@ -33,6 +33,8 @@ EXERCISE_CONFIG = {
     "Dumbbell curl": DUMBBELL_EACH,
     "Face pull": TOTAL_WEIGHT,
     "Deadlift": BARBELL_PLATE_PER_SIDE,
+    "RDL": BARBELL_PLATE_PER_SIDE,
+    "Underhand rows": BARBELL_PLATE_PER_SIDE,
     # Legs (best-guess defaults)
     "Squat": BARBELL_PLATE_PER_SIDE,
     "Leg press": TOTAL_WEIGHT,
@@ -44,6 +46,31 @@ EXERCISE_CONFIG = {
     "Dumbbell lateral raise": DUMBBELL_EACH,
     "Bicep curl": DUMBBELL_EACH,
     "Skull crushers": BARBELL_PLATE_PER_SIDE,
+    # Alternate names/variations flagged for grouping (see EXERCISE_GROUPS below) —
+    # weight types are best guesses, adjust via the Manage Exercises page if wrong.
+    "Flat chest press": PLATE_LOADED_PER_SIDE,
+    "Barbell bench press": BARBELL_PLATE_PER_SIDE,
+    "Incline chest press": PLATE_LOADED_PER_SIDE,
+    "Shoulder press": TOTAL_WEIGHT,
+    "Dumbbell bicep curls": DUMBBELL_EACH,
+    "Preacher curl": TOTAL_WEIGHT,
+    "Single arm Preacher curl": TOTAL_WEIGHT,
+}
+
+# Groups of exercise names that are really the same movement, so progress
+# trends combine them instead of splitting across whatever name was used that
+# day. Seeded from the exact pairs given at kickoff — add more via the Manage
+# Exercises page as other historical naming variants turn up (e.g. "Flat
+# bench press" from the original Push-day sample looks like it may belong in
+# "Chest Press" alongside "Barbell bench press" too; left out here since it
+# wasn't explicitly confirmed).
+EXERCISE_GROUPS = {
+    "Chest Press": ["Flat chest press", "Barbell bench press"],
+    "Incline Chest Press": ["Incline bench press", "Incline chest press"],
+    "Shoulder Press": ["Dumbbell Shoulder press", "Shoulder press"],
+    "Bicep Curl": [
+        "Dumbbell curl", "Dumbbell bicep curls", "Preacher curl", "Single arm Preacher curl",
+    ],
 }
 
 SPLIT_TRANSITION_DATE = date(2026, 1, 1)
@@ -87,4 +114,14 @@ def seed_if_empty(db: DBSession) -> None:
                     start_date=start_date,
                     end_date=end_date,
                 ))
+        db.commit()
+
+    if db.query(ExerciseGroup).count() == 0:
+        for group_name, exercise_names in EXERCISE_GROUPS.items():
+            group = ExerciseGroup(name=group_name)
+            db.add(group)
+            db.flush()
+            db.query(Exercise).filter(Exercise.name.in_(exercise_names)).update(
+                {"group_id": group.id}, synchronize_session=False
+            )
         db.commit()
