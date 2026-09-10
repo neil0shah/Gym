@@ -207,13 +207,16 @@ You need a host that keeps a Python process running continuously with a
 persistent disk (for `data/gym.db`) — not a purely static host. Two
 reasonable paths:
 
-1. **A small managed host** (recommended) — Railway, Fly.io, or Render all
-   support this directly: point them at this repo, they build and run
-   `uvicorn app.main:app`, and you attach a small persistent volume mounted
-   at `data/`. Set the three env vars above in the host's dashboard. All
-   three have a free or near-free tier for something this small. Railway's
-   deploy flow is the simplest (connect the GitHub repo, add a volume, set
-   env vars, done) if you want a specific recommendation to start with.
+1. **Fly.io** (recommended, and what this repo is set up for) — a
+   `Dockerfile` and `fly.toml.example` are included, so `fly launch` builds
+   and runs this app with no other configuration. Fly's free monthly
+   allowance covers one small always-on machine plus a 1 GB persistent
+   volume (mounted at `/app/data`, matching where `data/gym.db` lives), so
+   an app this size costs $0 — Fly does require a card on file for identity
+   verification, it just won't be charged. Railway and Render work too
+   (same idea: build the Dockerfile, attach a volume at `data/`, set the
+   three env vars above), but their free tiers don't include persistent
+   disks, so `data/gym.db` would be wiped on every restart.
 2. **Self-hosted + Tailscale** — run the app on a machine that stays on
    (a home server, a Raspberry Pi, or a laptop you don't fully shut down),
    install [Tailscale](https://tailscale.com) on it and on your phone, and
