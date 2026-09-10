@@ -182,9 +182,30 @@ are seeded from the exact pairs given at kickoff (Chest Press, Incline Chest
 Press, Shoulder Press, Bicep Curl) in `app/seed_data.py`; add more as you
 find other historical naming variants during backfill — the Manage Exercises
 page is meant to be a preliminary pass you can run before (or during) a big
-backfill, not a one-time setup step.
+backfill, not a one-time setup step. Group names are editable inline right
+in that table (click and type), and the exercise list only shows exercises
+you've actually logged data for — nothing from the seed defaults you haven't
+used — with ungrouped ones sorted first and highlighted amber, since those
+are the ones worth triaging.
 
-## What's implemented vs. deferred
+### Normalizing bilateral vs. unilateral variants within a group
+
+Some machines can be worked with both limbs sharing one stack (e.g. a
+preacher curl bar pulled with both arms) or with one limb alone moving the
+whole stack (e.g. "Single arm Preacher curl"). Grouping both under one name
+without adjustment would make the trend look like it cratered the day you
+switched from "both arms, 100lb combined" to "one arm, 50lb" — even though
+50lb per arm is *more* than the ~50lb per arm the 100lb combined lift
+actually represented.
+
+Check **Combined?** for an exercise on the Manage Exercises page (or in the
+import review screen) when its recorded weight is a combined load shared
+across both sides rather than already being per-side — `Exercise.
+combined_both_sides` then halves it in `total_weight_for()` for every
+chart, so it's comparable to a unilateral variant grouped alongside it.
+This has no effect on `dumbbell_each` exercises, which are already
+per-hand regardless of how the set was done. It's off by default for every
+exercise except the one confirmed case from testing (`Preacher curl`).
 
 Implemented (phases 1–3, 5, and part of 6 from the original build plan):
 - Data model (`exercises`, `exercise_groups`, `sessions`, `session_exercises`,

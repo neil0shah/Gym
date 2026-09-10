@@ -22,6 +22,7 @@ class ExerciseOut(BaseModel):
     weight_type_guess: str
     is_unrecognized: bool
     bar_weight_guess: Optional[float] = None
+    combined_both_sides: bool = False
     sets: List[SetOut]
 
 
@@ -54,6 +55,7 @@ class SaveExerciseIn(BaseModel):
     order_index: int
     weight_type: str
     bar_weight: Optional[float] = None
+    combined_both_sides: bool = False
     sets: List[SaveSetIn]
 
 
@@ -81,12 +83,19 @@ class ExerciseListItem(BaseModel):
     name: str
     weight_type: str
     bar_weight: Optional[float] = None
+    combined_both_sides: bool = False
     category: Optional[str] = None
     group_id: Optional[int] = None
     group_name: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class ExerciseUpdate(BaseModel):
+    weight_type: Optional[str] = None
+    bar_weight: Optional[float] = None
+    combined_both_sides: Optional[bool] = None
 
 
 class ExerciseGroupItem(BaseModel):

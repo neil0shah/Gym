@@ -111,6 +111,8 @@ function renderReview(data) {
                 }
             });
 
+            row.querySelector('.ex-combined-both-sides').checked = !!ex.combined_both_sides;
+
             const setsCell = row.querySelector('.sets-cell');
             ex.sets.forEach((st) => {
                 const setNode = setTpl.content.cloneNode(true);
@@ -152,6 +154,7 @@ saveBtn.addEventListener('click', async () => {
             const barWeightInput = row.querySelector('.ex-bar-weight');
             const barWeight = hasFixedWeight(weightType)
                 ? parseFloat(barWeightInput.value || defaultFixedWeight(weightType)) : null;
+            const combinedBothSides = row.querySelector('.ex-combined-both-sides').checked;
 
             const sets = [];
             row.querySelectorAll('.set-group').forEach((group, setIdx) => {
@@ -174,6 +177,7 @@ saveBtn.addEventListener('click', async () => {
                 order_index: idx,
                 weight_type: weightType,
                 bar_weight: barWeight,
+                combined_both_sides: combinedBothSides,
                 sets,
             });
         });

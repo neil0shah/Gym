@@ -81,6 +81,7 @@ def api_parse(req: schemas.ParseRequest, db: DBSession = Depends(get_db)):
                         weight_type_guess=ex.weight_type_guess,
                         is_unrecognized=ex.is_unrecognized,
                         bar_weight_guess=ex.bar_weight_guess,
+                        combined_both_sides=ex.combined_both_sides,
                         sets=[
                             schemas.SetOut(
                                 set_number=st.set_number,
@@ -130,6 +131,7 @@ def api_save(req: schemas.SaveRequest, db: DBSession = Depends(get_db)):
                     name=exercise_in.name,
                     weight_type=exercise_in.weight_type,
                     bar_weight=exercise_in.bar_weight,
+                    combined_both_sides=exercise_in.combined_both_sides,
                 )
                 db.add(exercise_row)
                 db.flush()
@@ -139,6 +141,7 @@ def api_save(req: schemas.SaveRequest, db: DBSession = Depends(get_db)):
                     exercise_row.weight_type = exercise_in.weight_type
                 if exercise_in.bar_weight is not None:
                     exercise_row.bar_weight = exercise_in.bar_weight
+                exercise_row.combined_both_sides = exercise_in.combined_both_sides
 
             session_exercise_row = models.SessionExercise(
                 session_id=session_row.id,
@@ -173,20 +176,53 @@ def api_save(req: schemas.SaveRequest, db: DBSession = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/exercises", response_model=List[schemas.ExerciseListItem])
-def api_exercises(db: DBSession = Depends(get_db)):
-    exercises = db.query(models.Exercise).order_by(models.Exercise.name).all()
+def api_exercises(has_data: bool = False, db: DBSession = Depends(get_db)):
+    query = db.query(models.Exercise)
+    if has_data:
+        query = query.filter(
+            db.query(models.SessionExercise)
+            .filter(models.SessionExercise.exercise_id == models.Exercise.id)
+            .exists()
+        )
+    exercises = query.order_by(models.Exercise.name).all()
     return [
         schemas.ExerciseListItem(
             id=e.id,
             name=e.name,
             weight_type=e.weight_type,
             bar_weight=e.bar_weight,
+            combined_both_sides=e.combined_both_sides,
             category=e.category,
             group_id=e.group_id,
             group_name=e.group.name if e.group is not None else None,
         )
         for e in exercises
     ]
+
+
+@app.put("/api/exercises/{exercise_id}", response_model=schemas.ExerciseListItem)
+def api_update_exercise(exercise_id: int, req: schemas.ExerciseUpdate, db: DBSession = Depends(get_db)):
+    exercise = db.query(models.Exercise).filter(models.Exercise.id == exercise_id).first()
+    if exercise is None:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    if req.weight_type is not None:
+        exercise.weight_type = req.weight_type
+    if req.bar_weight is not None:
+        exercise.bar_weight = req.bar_weight
+    if req.combined_both_sides is not None:
+        exercise.combined_both_sides = req.combined_both_sides
+    db.commit()
+    db.refresh(exercise)
+    return schemas.ExerciseListItem(
+        id=exercise.id,
+        name=exercise.name,
+        weight_type=exercise.weight_type,
+        bar_weight=exercise.bar_weight,
+        combined_both_sides=exercise.combined_both_sides,
+        category=exercise.category,
+        group_id=exercise.group_id,
+        group_name=exercise.group.name if exercise.group is not None else None,
+    )
 
 
 @app.get("/api/workout_types", response_model=List[str])

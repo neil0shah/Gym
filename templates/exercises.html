@@ -13,6 +13,7 @@
         <thead><tr><th>Group</th><th>Members</th><th></th></tr></thead>
         <tbody></tbody>
     </table>
+    <p class="hint">Click a group name to rename it.</p>
     <p class="hint" id="no-groups-msg" hidden>No groups yet — select exercises below and create one.</p>
 </section>
 
@@ -28,12 +29,14 @@
         <button id="ungroup-btn">Remove selected from their group</button>
         <span id="exercises-status" class="status"></span>
     </div>
+    <p class="hint">Rows highlighted amber have no group yet — the most useful ones to sort first.</p>
     <table class="exercise-table" id="exercises-table">
         <thead>
             <tr>
                 <th><input type="checkbox" id="select-all"></th>
                 <th>Exercise</th>
                 <th>Weight type</th>
+                <th title="Check if the recorded weight is a combined load shared across both arms/legs, so it can be halved to compare against a single-side variant of the same movement.">Combined?</th>
                 <th>Group</th>
             </tr>
         </thead>

@@ -172,7 +172,8 @@ table.exercise-table {
     vertical-align: middle;
 }
 
-.exercise-row.unrecognized {
+.exercise-row.unrecognized,
+#exercises-table tbody tr.unrecognized {
     background: rgba(217, 164, 65, 0.08);
 }
 
@@ -259,3 +260,17 @@ input, select {
     border-bottom: 1px solid var(--border);
 }
 .pr-table th { color: var(--text-dim); font-weight: 500; }
+
+.group-name-input {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    font: inherit;
+    padding: 3px 6px;
+    border-radius: 4px;
+    width: 100%;
+}
+.group-name-input:hover, .group-name-input:focus {
+    background: var(--panel-alt);
+    border-color: var(--border);
+}

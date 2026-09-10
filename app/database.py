@@ -25,7 +25,10 @@ def get_db():
 # by an earlier version of the app needs these added by hand.
 _ADDED_COLUMNS = {
     "sessions": [("note", "TEXT")],
-    "exercises": [("group_id", "INTEGER")],
+    "exercises": [
+        ("group_id", "INTEGER"),
+        ("combined_both_sides", "BOOLEAN NOT NULL DEFAULT 0"),
+    ],
 }
 
 

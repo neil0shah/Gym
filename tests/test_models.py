@@ -32,3 +32,21 @@ def test_total_weight_tracked_as_is():
 def test_bodyweight_fixed_tracked_as_is():
     ex = Exercise(name="Pull ups", weight_type=BODYWEIGHT_FIXED, bar_weight=160.0)
     assert ex.total_weight_for(160.0) == 160.0
+
+
+def test_combined_both_sides_halves_total_weight():
+    # A bilateral machine (both arms sharing one stack) needs halving to be
+    # comparable to a unilateral variant of the same movement, e.g. a
+    # preacher curl machine at 100lb combined ~= 50lb per arm.
+    ex = Exercise(name="Preacher curl", weight_type=TOTAL_WEIGHT, combined_both_sides=True)
+    assert ex.total_weight_for(100.0) == 50.0
+
+
+def test_combined_both_sides_defaults_to_no_halving():
+    ex = Exercise(name="Single arm Preacher curl", weight_type=TOTAL_WEIGHT)
+    assert ex.total_weight_for(50.0) == 50.0
+
+
+def test_combined_both_sides_applies_after_barbell_math():
+    ex = Exercise(name="Some barbell thing", weight_type=BARBELL_PLATE_PER_SIDE, combined_both_sides=True)
+    assert ex.total_weight_for(45.0) == 67.5  # (45*2 + 45) / 2

@@ -92,8 +92,8 @@ BARBELL_KEYWORDS = [
 ]
 DUMBBELL_KEYWORDS = ["dumbbell", "db "]
 
-# lowercased exercise name -> (canonical_name, weight_type, bar_weight)
-KnownExercises = Dict[str, Tuple[str, str, Optional[float]]]
+# lowercased exercise name -> (canonical_name, weight_type, bar_weight, combined_both_sides)
+KnownExercises = Dict[str, Tuple[str, str, Optional[float], bool]]
 
 
 @dataclass
@@ -112,6 +112,7 @@ class ParsedExercise:
     weight_type_guess: str
     is_unrecognized: bool
     bar_weight_guess: Optional[float] = None
+    combined_both_sides: bool = False
     sets: List[ParsedSet] = field(default_factory=list)
 
 
@@ -400,11 +401,12 @@ def _build_single_exercise(
     if is_bodyweight:
         is_unrecognized = known is None
         if known is not None:
-            canonical_name, weight_type, known_bar_weight = known
+            canonical_name, weight_type, known_bar_weight, combined_both_sides = known
             assumed = known_bar_weight if known_bar_weight is not None else DEFAULT_BODYWEIGHT_ESTIMATE
         else:
             canonical_name = name
             assumed = DEFAULT_BODYWEIGHT_ESTIMATE
+            combined_both_sides = False
             _track_unrecognized(key, name, unrecognized_seen, unrecognized_order)
         weight_type = BODYWEIGHT_FIXED
         sets = [
@@ -415,11 +417,12 @@ def _build_single_exercise(
     else:
         is_unrecognized = known is None
         if known is not None:
-            canonical_name, weight_type, known_bar_weight = known
+            canonical_name, weight_type, known_bar_weight, combined_both_sides = known
         else:
             canonical_name = name
             weight_type = _guess_weight_type(name)
             known_bar_weight = None
+            combined_both_sides = False
             _track_unrecognized(key, name, unrecognized_seen, unrecognized_order)
 
         # Backfill any leading sets that came before the first weight-bearing
@@ -446,6 +449,7 @@ def _build_single_exercise(
         weight_type_guess=weight_type,
         is_unrecognized=is_unrecognized,
         bar_weight_guess=bar_weight_guess,
+        combined_both_sides=combined_both_sides,
         sets=sets,
     )
 

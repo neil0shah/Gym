@@ -79,6 +79,13 @@ EXERCISE_GROUPS = {
     "Romanian Deadlift": ["RDL", "Romanian deadlift"],
 }
 
+# Exercises where weight_recorded is a combined load shared across both
+# limbs (e.g. a preacher curl machine pulled with both arms on one handle)
+# rather than already being per-limb. Halved for chart purposes so they're
+# comparable to a unilateral variant grouped alongside them (e.g. "Single
+# arm Preacher curl"). See Exercise.combined_both_sides.
+COMBINED_BOTH_SIDES_EXERCISES = {"Preacher curl"}
+
 SPLIT_TRANSITION_DATE = date(2026, 1, 1)
 
 # (workout_type, [exercise names], start_date, end_date)
@@ -108,7 +115,10 @@ SPLIT_CONFIG = [
 def seed_if_empty(db: DBSession) -> None:
     if db.query(Exercise).count() == 0:
         for name, weight_type in EXERCISE_CONFIG.items():
-            db.add(Exercise(name=name, weight_type=weight_type))
+            db.add(Exercise(
+                name=name, weight_type=weight_type,
+                combined_both_sides=name in COMBINED_BOTH_SIDES_EXERCISES,
+            ))
         db.commit()
 
     if db.query(SplitConfigEntry).count() == 0:

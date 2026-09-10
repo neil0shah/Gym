@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, Float, Date, ForeignKey, Text, DateTime, UniqueConstraint
+    Column, Integer, String, Float, Date, ForeignKey, Text, DateTime, UniqueConstraint, Boolean
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -50,6 +50,13 @@ class Exercise(Base):
     bar_weight = Column(Float, nullable=True)
     category = Column(String, nullable=True)  # e.g. muscle group, optional
     group_id = Column(Integer, ForeignKey("exercise_groups.id"), nullable=True)
+    # True when weight_recorded is a combined/shared load moved by both limbs
+    # together (e.g. a preacher curl machine pulled with both arms on one
+    # handle) rather than already being a per-limb figure. Halved in
+    # total_weight_for() so it's comparable to a unilateral variant of the
+    # same movement grouped alongside it (e.g. "Single arm Preacher curl").
+    # Meaningless for dumbbell_each (already always per-hand).
+    combined_both_sides = Column(Boolean, nullable=False, default=False)
 
     session_exercises = relationship("SessionExercise", back_populates="exercise")
     group = relationship("ExerciseGroup", back_populates="exercises")
@@ -57,11 +64,15 @@ class Exercise(Base):
     def total_weight_for(self, weight_recorded: float) -> float:
         if self.weight_type == BARBELL_PLATE_PER_SIDE:
             bar = self.bar_weight if self.bar_weight is not None else DEFAULT_BAR_WEIGHT
-            return weight_recorded * 2 + bar
-        if self.weight_type == PLATE_LOADED_PER_SIDE:
-            return weight_recorded * 2
-        # dumbbell_each, total_weight, and bodyweight_fixed are all tracked as-is
-        return weight_recorded
+            total = weight_recorded * 2 + bar
+        elif self.weight_type == PLATE_LOADED_PER_SIDE:
+            total = weight_recorded * 2
+        else:
+            # dumbbell_each, total_weight, and bodyweight_fixed are tracked as-is
+            total = weight_recorded
+        if self.combined_both_sides:
+            total = total / 2
+        return total
 
 
 class Session(Base):

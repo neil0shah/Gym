@@ -22,7 +22,7 @@ let groups = [];
 
 async function loadAll() {
     [exercises, groups] = await Promise.all([
-        fetch('/api/exercises').then((r) => r.json()),
+        fetch('/api/exercises?has_data=true').then((r) => r.json()),
         fetch('/api/exercise_groups').then((r) => r.json()),
     ]);
     renderGroups();
@@ -43,7 +43,7 @@ function renderGroups() {
             .join(', ');
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${escapeHtml(g.name)}</td>
+            <td><input type="text" class="group-name-input" value="${escapeHtml(g.name)}" data-id="${g.id}"></td>
             <td>${escapeHtml(memberNames)}</td>
             <td><button class="delete-group-btn" data-id="${g.id}">Delete group</button></td>
         `;
@@ -57,21 +57,69 @@ function renderGroups() {
             await loadAll();
         });
     });
+
+    groupsTableBody.querySelectorAll('.group-name-input').forEach((input) => {
+        const saveIfChanged = async () => {
+            const newName = input.value.trim();
+            const group = groups.find((g) => g.id === parseInt(input.dataset.id, 10));
+            if (!newName || !group || newName === group.name) { input.value = group ? group.name : ''; return; }
+            const resp = await fetch(`/api/exercise_groups/${input.dataset.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName }),
+            });
+            if (!resp.ok) {
+                setStatus('Failed to rename group: ' + await resp.text(), true);
+                await loadAll();
+                return;
+            }
+            setStatus(`Renamed group to "${newName}".`, false);
+            await loadAll();
+        };
+        input.addEventListener('blur', saveIfChanged);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') input.blur();
+        });
+    });
 }
 
 function renderExercises() {
     exercisesTableBody.innerHTML = '';
-    exercises.forEach((e) => {
+    const sorted = [...exercises].sort((a, b) => {
+        if (!!a.group_id !== !!b.group_id) return a.group_id ? 1 : -1;
+        return a.name.localeCompare(b.name);
+    });
+    sorted.forEach((e) => {
         const tr = document.createElement('tr');
+        if (!e.group_id) tr.classList.add('unrecognized');
         tr.innerHTML = `
             <td><input type="checkbox" class="ex-checkbox" data-id="${e.id}"></td>
             <td>${escapeHtml(e.name)}</td>
             <td>${WEIGHT_TYPE_LABELS[e.weight_type] || e.weight_type}</td>
+            <td><input type="checkbox" class="ex-combined-checkbox" data-id="${e.id}" ${e.combined_both_sides ? 'checked' : ''}></td>
             <td>${e.group_name ? escapeHtml(e.group_name) : '—'}</td>
         `;
         exercisesTableBody.appendChild(tr);
     });
     selectAllCheckbox.checked = false;
+
+    exercisesTableBody.querySelectorAll('.ex-combined-checkbox').forEach((cb) => {
+        cb.addEventListener('change', async () => {
+            const resp = await fetch(`/api/exercises/${cb.dataset.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ combined_both_sides: cb.checked }),
+            });
+            if (!resp.ok) {
+                setStatus('Failed to update: ' + await resp.text(), true);
+                cb.checked = !cb.checked;
+                return;
+            }
+            const ex = exercises.find((e) => e.id === parseInt(cb.dataset.id, 10));
+            if (ex) ex.combined_both_sides = cb.checked;
+            setStatus('Updated.', false);
+        });
+    });
 }
 
 function escapeHtml(s) {

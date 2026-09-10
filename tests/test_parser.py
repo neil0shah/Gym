@@ -14,17 +14,17 @@ Incline bench press: 35: 7,6
 Straight bar tri extension: 65: 9, 6+1
 """
 
-# lowercased name -> (canonical name, weight_type, bar_weight)
+# lowercased name -> (canonical name, weight_type, bar_weight, combined_both_sides)
 KNOWN_EXERCISES = {
-    "flat bench press": ("Flat bench press", BARBELL_PLATE_PER_SIDE, None),
-    "dumbbell shoulder press": ("Dumbbell Shoulder press", DUMBBELL_EACH, None),
-    "dumbbell lat raises": ("Dumbbell Lat raises", DUMBBELL_EACH, None),
-    "incline bench press": ("Incline bench press", BARBELL_PLATE_PER_SIDE, None),
-    "straight bar tri extension": ("Straight bar tri extension", TOTAL_WEIGHT, None),
-    "underhand rows": ("Underhand rows", BARBELL_PLATE_PER_SIDE, None),
-    "rdl": ("RDL", BARBELL_PLATE_PER_SIDE, None),
-    "flat chest press": ("Flat chest press", PLATE_LOADED_PER_SIDE, None),
-    "pull ups": ("Pull ups", BODYWEIGHT_FIXED, 160.0),
+    "flat bench press": ("Flat bench press", BARBELL_PLATE_PER_SIDE, None, False),
+    "dumbbell shoulder press": ("Dumbbell Shoulder press", DUMBBELL_EACH, None, False),
+    "dumbbell lat raises": ("Dumbbell Lat raises", DUMBBELL_EACH, None, False),
+    "incline bench press": ("Incline bench press", BARBELL_PLATE_PER_SIDE, None, False),
+    "straight bar tri extension": ("Straight bar tri extension", TOTAL_WEIGHT, None, False),
+    "underhand rows": ("Underhand rows", BARBELL_PLATE_PER_SIDE, None, False),
+    "rdl": ("RDL", BARBELL_PLATE_PER_SIDE, None, False),
+    "flat chest press": ("Flat chest press", PLATE_LOADED_PER_SIDE, None, False),
+    "pull ups": ("Pull ups", BODYWEIGHT_FIXED, 160.0, False),
 }
 
 PUSH_SPLIT_CONFIG = [
@@ -374,3 +374,18 @@ def test_trailing_weight_with_no_reps_keeps_earlier_valid_sets():
     assert ex.sets[0].weight_recorded == 110.0
     assert ex.sets[0].reps_full == 6
     assert len(result.warnings) == 1
+
+
+def test_combined_both_sides_carries_through_from_known_exercise():
+    known = {
+        "preacher curl": ("Preacher curl", TOTAL_WEIGHT, None, True),
+        "single arm preacher curl": ("Single arm Preacher curl", TOTAL_WEIGHT, None, False),
+    }
+    result = parse_notes("Preacher curl: 100: 8, 7", known)
+    assert result.sessions[0].exercises[0].combined_both_sides is True
+
+    result = parse_notes("Single arm Preacher curl: 50: 8, 7", known)
+    assert result.sessions[0].exercises[0].combined_both_sides is False
+
+    result = parse_notes("Preacher curl: 100: 8, 7", known_exercises={})
+    assert result.sessions[0].exercises[0].combined_both_sides is False
