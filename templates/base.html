@@ -13,6 +13,7 @@
         <a href="/import" class="{% block nav_import %}{% endblock %}">Add / Import</a>
         <a href="/progress" class="{% block nav_progress %}{% endblock %}">Progress</a>
         <a href="/exercises" class="{% block nav_exercises %}{% endblock %}">Manage Exercises</a>
+        {% if auth_enabled %}<a href="/logout">Log out</a>{% endif %}
     </nav>
     <main class="container">
         {% block content %}{% endblock %}

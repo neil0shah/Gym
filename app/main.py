@@ -1,17 +1,23 @@
+import os
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Form, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 
 from app.database import Base, engine, get_db, run_migrations
 from app import models, schemas, seed_data
+from app.auth import (
+    AUTH_ENABLED, NotAuthenticated, SESSION_MAX_AGE_SECONDS,
+    not_authenticated_handler, require_login, verify_credentials,
+)
 from app.lookup import get_known_exercises, get_split_config, get_workout_types
 from app.parser import parse_notes
 from app.stats import epley_1rm
@@ -19,9 +25,25 @@ from app.stats import epley_1rm
 Base.metadata.create_all(bind=engine)
 run_migrations()
 
-app = FastAPI(title="Gym Progress Tracker")
+if AUTH_ENABLED and not os.environ.get("SESSION_SECRET_KEY"):
+    raise RuntimeError(
+        "AUTH_EMAIL/AUTH_PASSWORD_HASH are set but SESSION_SECRET_KEY is not — "
+        "set a stable random secret (see README) so logins survive a restart."
+    )
+session_secret = os.environ.get("SESSION_SECRET_KEY") or os.urandom(32).hex()
+
+app = FastAPI(title="Gym Progress Tracker", dependencies=[Depends(require_login)])
+app.add_exception_handler(NotAuthenticated, not_authenticated_handler)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret,
+    max_age=SESSION_MAX_AGE_SECONDS,
+    same_site="lax",
+    https_only=os.environ.get("SESSION_HTTPS_ONLY", "true" if AUTH_ENABLED else "false").lower() == "true",
+)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+templates.env.globals["auth_enabled"] = AUTH_ENABLED
 
 
 @app.on_event("startup")
@@ -31,6 +53,31 @@ def startup_seed():
         seed_data.seed_if_empty(db)
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Login (no-op unless AUTH_EMAIL/AUTH_PASSWORD_HASH are configured — see app/auth.py)
+# ---------------------------------------------------------------------------
+
+@app.get("/login")
+def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+
+
+@app.post("/login")
+def login_submit(request: Request, email: str = Form(...), password: str = Form(...)):
+    if not verify_credentials(email, password):
+        return templates.TemplateResponse(
+            "login.html", {"request": request, "error": "Incorrect email or password."}, status_code=401,
+        )
+    request.session["authenticated"] = True
+    return RedirectResponse(url="/import", status_code=302)
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=302)
 
 
 # ---------------------------------------------------------------------------

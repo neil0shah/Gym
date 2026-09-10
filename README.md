@@ -167,6 +167,76 @@ time, a rest-day tally with no numbers ("2 sets of calf raises"). These show
 up in the review screen's warnings so you can see exactly what got dropped
 and fix it by hand if it matters.
 
+## Using it from your phone (deploying + login)
+
+Running on your laptop only, this app is reachable at `127.0.0.1:8000` —
+your own machine only, nothing else on the network can reach it, phone
+included. To log workouts from your phone day-to-day, two things have to
+change: the app needs to run somewhere both devices can reach, and since
+that makes it reachable from the internet generally, it needs a login.
+
+**Login is already built and ready** (`app/auth.py`), but it's off by
+default so local laptop-only use needs zero setup — it only turns on once
+you set two environment variables:
+
+```bash
+AUTH_EMAIL=you@example.com
+AUTH_PASSWORD_HASH=<bcrypt hash, see below>
+SESSION_SECRET_KEY=<a long random string, keep it secret>
+```
+
+Generate the password hash once, locally:
+
+```bash
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password-here', bcrypt.gensalt()).decode())"
+```
+
+Paste the printed hash as `AUTH_PASSWORD_HASH` — never the raw password
+itself. `SESSION_SECRET_KEY` can be anything long and random (e.g. `python3
+-c "import secrets; print(secrets.token_hex(32))"`); it just needs to stay
+the same across restarts, or you'll get logged out every time the server
+restarts. With all three set, every page and API endpoint requires logging
+in first, and the session cookie keeps you signed in for 90 days.
+
+This is intentionally a single hardcoded account (one `AUTH_EMAIL` you set
+yourself), not a signup system — there's only one person using this app.
+
+### Where to actually run it
+
+You need a host that keeps a Python process running continuously with a
+persistent disk (for `data/gym.db`) — not a purely static host. Two
+reasonable paths:
+
+1. **A small managed host** (recommended) — Railway, Fly.io, or Render all
+   support this directly: point them at this repo, they build and run
+   `uvicorn app.main:app`, and you attach a small persistent volume mounted
+   at `data/`. Set the three env vars above in the host's dashboard. All
+   three have a free or near-free tier for something this small. Railway's
+   deploy flow is the simplest (connect the GitHub repo, add a volume, set
+   env vars, done) if you want a specific recommendation to start with.
+2. **Self-hosted + Tailscale** — run the app on a machine that stays on
+   (a home server, a Raspberry Pi, or a laptop you don't fully shut down),
+   install [Tailscale](https://tailscale.com) on it and on your phone, and
+   reach the app via its private Tailscale address. Never touches the
+   public internet, so you could skip the login env vars entirely and rely
+   on Tailscale's device list as the access control instead. No hosting
+   cost, but the host machine has to actually be running and reachable
+   whenever you want to log a set.
+
+Whichever you pick, make sure the app is served over **HTTPS** — most
+managed hosts do this automatically at their edge. The session cookie
+defaults to HTTPS-only whenever login is enabled (`SESSION_HTTPS_ONLY`,
+default `true` when `AUTH_EMAIL` is set); only set it to `false` if you're
+deliberately testing over plain HTTP.
+
+### Bringing your data with you
+
+`data/gym.db` is just a SQLite file. To move your existing local import to
+a new deployment: copy that file into the deployed environment's
+persistent volume at the same path before the app's first request there
+(or stop the deployed app, replace its `data/gym.db`, restart it). There's
+no export/import tool for this today — it's a file copy.
+
 ## Grouping exercises for trend continuity
 
 Different names or machines for the same movement (e.g. "Flat chest press"
@@ -206,6 +276,8 @@ chart, so it's comparable to a unilateral variant grouped alongside it.
 This has no effect on `dumbbell_each` exercises, which are already
 per-hand regardless of how the set was done. It's off by default for every
 exercise except the one confirmed case from testing (`Preacher curl`).
+
+## What's implemented vs. deferred
 
 Implemented (phases 1–3, 5, and part of 6 from the original build plan):
 - Data model (`exercises`, `exercise_groups`, `sessions`, `session_exercises`,
