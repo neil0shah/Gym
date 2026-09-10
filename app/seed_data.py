@@ -34,6 +34,7 @@ EXERCISE_CONFIG = {
     "Face pull": TOTAL_WEIGHT,
     "Deadlift": BARBELL_PLATE_PER_SIDE,
     "RDL": BARBELL_PLATE_PER_SIDE,
+    "Romanian deadlift": BARBELL_PLATE_PER_SIDE,
     "Underhand rows": BARBELL_PLATE_PER_SIDE,
     # Legs (best-guess defaults)
     "Squat": BARBELL_PLATE_PER_SIDE,
@@ -50,27 +51,32 @@ EXERCISE_CONFIG = {
     # weight types are best guesses, adjust via the Manage Exercises page if wrong.
     "Flat chest press": PLATE_LOADED_PER_SIDE,
     "Barbell bench press": BARBELL_PLATE_PER_SIDE,
+    "Flat bench press": BARBELL_PLATE_PER_SIDE,
     "Incline chest press": PLATE_LOADED_PER_SIDE,
     "Shoulder press": TOTAL_WEIGHT,
     "Dumbbell bicep curls": DUMBBELL_EACH,
     "Preacher curl": TOTAL_WEIGHT,
     "Single arm Preacher curl": TOTAL_WEIGHT,
+    # Same lift, literal abbreviation of the same name.
+    "RDL": BARBELL_PLATE_PER_SIDE,
 }
 
 # Groups of exercise names that are really the same movement, so progress
 # trends combine them instead of splitting across whatever name was used that
-# day. Seeded from the exact pairs given at kickoff — add more via the Manage
-# Exercises page as other historical naming variants turn up (e.g. "Flat
-# bench press" from the original Push-day sample looks like it may belong in
-# "Chest Press" alongside "Barbell bench press" too; left out here since it
-# wasn't explicitly confirmed).
+# day. Seeded from the exact pairs given at kickoff, plus "Flat bench press"
+# (confirmed as the same lift as "Barbell bench press", just typed
+# differently that day) and "RDL"/"Romanian deadlift" (same lift, literal
+# abbreviation). Add more via the Manage Exercises page as other historical
+# naming variants turn up — a full backfill will surface plenty (e.g. this
+# dataset alone has "Rear delt flys" written at least 4 different ways).
 EXERCISE_GROUPS = {
-    "Chest Press": ["Flat chest press", "Barbell bench press"],
+    "Chest Press": ["Flat chest press", "Barbell bench press", "Flat bench press"],
     "Incline Chest Press": ["Incline bench press", "Incline chest press"],
     "Shoulder Press": ["Dumbbell Shoulder press", "Shoulder press"],
     "Bicep Curl": [
         "Dumbbell curl", "Dumbbell bicep curls", "Preacher curl", "Single arm Preacher curl",
     ],
+    "Romanian Deadlift": ["RDL", "Romanian deadlift"],
 }
 
 SPLIT_TRANSITION_DATE = date(2026, 1, 1)

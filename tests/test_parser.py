@@ -252,3 +252,125 @@ def test_note_attaches_only_to_the_next_session():
     assert len(result.sessions) == 2
     assert result.sessions[0].note == "California - No straps"
     assert result.sessions[1].note is None
+
+
+# --- Real historical-data edge cases ---------------------------------------
+
+def test_dash_separated_per_set_weight():
+    raw = "Upper back row: 100 - 7+2, 85 - 10+1"
+    result = parse_notes(raw, known_exercises={})
+    ex = result.sessions[0].exercises[0]
+    assert ex.name == "Upper back row"
+    assert [s.weight_recorded for s in ex.sets] == [100.0, 85.0]
+    assert [(s.reps_full, s.reps_partial) for s in ex.sets] == [(7, 2), (10, 1)]
+
+
+def test_dash_separated_second_set_carries_forward_weight():
+    raw = "Delt: 25 - 11, 8+1"
+    result = parse_notes(raw, known_exercises={})
+    ex = result.sessions[0].exercises[0]
+    assert [s.weight_recorded for s in ex.sets] == [25.0, 25.0]
+    assert [s.reps_full for s in ex.sets] == [11, 8]
+    assert ex.sets[1].reps_partial == 1
+
+
+def test_name_followed_by_space_then_weight_no_colon():
+    raw = "Incline chest press 45 : 13, 10+3"
+    result = parse_notes(raw, known_exercises={})
+    ex = result.sessions[0].exercises[0]
+    assert ex.name == "Incline chest press"
+    assert [s.weight_recorded for s in ex.sets] == [45.0, 45.0]
+    assert [(s.reps_full, s.reps_partial) for s in ex.sets] == [(13, None), (10, 3)]
+
+
+def test_plate_count_weight_tokens():
+    assert parse_notes("Hack squat: 2 plates: 6, 5", {}).sessions[0].exercises[0].sets[0].weight_recorded == 90.0
+    assert parse_notes("Hip thrust: 3 plates+10: 8, 8", {}).sessions[0].exercises[0].sets[0].weight_recorded == 145.0
+    assert parse_notes("Hack squat: Plate+2 10s: 8", {}).sessions[0].exercises[0].sets[0].weight_recorded == 65.0
+    assert parse_notes("Chest press: 35+25: 8, 6", {}).sessions[0].exercises[0].sets[0].weight_recorded == 60.0
+    assert parse_notes("Hip thrust: 3pl+10: 8, 8", {}).sessions[0].exercises[0].sets[0].weight_recorded == 145.0
+
+
+def test_l7r6_asymmetric_reps_recorded_as_lower_side():
+    raw = "Dumbbell curl: 25: L7R6, 20: 11"
+    result = parse_notes(raw, known_exercises={})
+    ex = result.sessions[0].exercises[0]
+    assert ex.sets[0].reps_full == 6
+    assert ex.sets[0].reps_partial is None
+    assert ex.sets[0].raw_rep_string == "L7R6"
+
+
+def test_embedded_superset_on_one_line_splits_into_two_exercises():
+    raw = "Hammer: 60: 10 Bicep: 60: 8"
+    result = parse_notes(raw, known_exercises={})
+    exercises = result.sessions[0].exercises
+    assert [e.name for e in exercises] == ["Hammer", "Bicep"]
+    assert exercises[0].sets[0].weight_recorded == 60.0
+    assert exercises[0].sets[0].reps_full == 10
+    assert exercises[1].sets[0].reps_full == 8
+    assert [e.order_index for e in exercises] == [0, 1]
+
+
+def test_embedded_superset_with_comma_and_multiword_name():
+    raw = "Tri extension: 23: 6, 20: 9 Cable Lat Raises: 17.5: 7, 15: 11"
+    result = parse_notes(raw, known_exercises={})
+    exercises = result.sessions[0].exercises
+    assert [e.name for e in exercises] == ["Tri extension", "Cable Lat Raises"]
+    assert len(exercises[0].sets) == 2
+    assert len(exercises[1].sets) == 2
+
+
+def test_plate_count_not_misread_as_embedded_exercise():
+    # "2 Plates" must stay a weight token, not get split as an exercise named "Plates"
+    raw = "Hack squat: 2 Plates: 6, plate+35: 3"
+    result = parse_notes(raw, known_exercises={})
+    exercises = result.sessions[0].exercises
+    assert len(exercises) == 1
+    assert exercises[0].name == "Hack squat"
+    assert exercises[0].sets[0].weight_recorded == 90.0
+
+
+def test_parenthetical_annotation_between_name_and_weight_is_stripped():
+    raw = "Upper back row: (no straps) 115: 7, 100: 7"
+    result = parse_notes(raw, known_exercises={})
+    ex = result.sessions[0].exercises[0]
+    assert ex.name == "Upper back row"
+    assert ex.sets[0].weight_recorded == 115.0
+    assert ex.sets[1].weight_recorded == 100.0
+
+
+def test_trailing_parenthetical_annotation_on_reps_is_stripped():
+    raw = "Lat pulldown: 100 - 8, 85: 12 (1 partial)"
+    result = parse_notes(raw, known_exercises={})
+    ex = result.sessions[0].exercises[0]
+    assert ex.sets[1].reps_full == 12
+    assert ex.sets[1].weight_recorded == 85.0
+
+
+def test_bare_number_annotation_does_not_corrupt_date_tracking():
+    # "2 WEEK BREAK" must not be misparsed as day 2 of some month — dateutil's
+    # fuzzy mode will happily do that for a bare number with no "/" or month.
+    raw = "1/5/2026\n\n" + SAMPLE_PUSH_DAY + "\n2 WEEK BREAK\n\n" + SAMPLE_PUSH_DAY
+    result = parse_notes(raw, KNOWN_EXERCISES)
+    assert len(result.sessions) == 2
+    assert result.sessions[0].date == date(2026, 1, 5)
+    assert result.sessions[1].note == "2 WEEK BREAK"
+    assert result.sessions[1].date == date(2026, 1, 6)  # falls back to +1 day, not a bogus parsed date
+
+
+def test_day_n_header_becomes_note_not_a_broken_exercise():
+    raw = "Day 4:\n" + SAMPLE_PUSH_DAY
+    result = parse_notes(raw, KNOWN_EXERCISES)
+    assert len(result.sessions) == 1
+    assert result.sessions[0].note == "Day 4"
+    assert len(result.sessions[0].exercises) == 5
+
+
+def test_trailing_weight_with_no_reps_keeps_earlier_valid_sets():
+    raw = "Preacher curl: 110: 6, 95:"
+    result = parse_notes(raw, known_exercises={})
+    ex = result.sessions[0].exercises[0]
+    assert len(ex.sets) == 1
+    assert ex.sets[0].weight_recorded == 110.0
+    assert ex.sets[0].reps_full == 6
+    assert len(result.warnings) == 1

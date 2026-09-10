@@ -130,6 +130,43 @@ Beyond the basic `name: weight: reps` shape, the parser also handles:
   saved with the session (`sessions.note`) as context for later, and
   doesn't otherwise affect parsing or calculations.
 
+Validated against ~2.5 years of real backfill notes (365 parsed sessions),
+which turned up a few more shapes now also supported:
+
+- **Dash-separated per-set weight** (an older notation): `Upper back row:
+  100 - 7+2, 85 - 10+1` works the same as the colon form.
+- **No colon between name and weight** — just a per-exercise typing habit:
+  `Shoulder press 55 : 6+2, 50: 8+1` and `Shoulder press: 55: 6+2, 50: 8+1`
+  parse identically. The split point is wherever a weight-shaped token
+  starts, not a fixed colon position — so a line like `Day 4:` or `2/18:
+  First time taking creatine` (name-shaped text that never resolves to real
+  set data) correctly falls through to date/note handling instead of
+  becoming a broken, empty exercise.
+- **More plate-math shapes**: `2 plates` (=90, two 45lb plates), `2
+  plates+10` (=100), `Plate+2 10s` (=65, a 45lb plate plus two 10lb
+  plates), and bare sums with no "Plate" keyword at all like `35+25` (=60).
+- **Asymmetric single-side reps**: `Dumbbell curl: 25: L7R6, 20: 11` (left
+  did 7, right did 6) is recorded as 6 — the lower, limiting side.
+- **Two exercises glued onto one line** (a fast-typed superset, with or
+  without a comma between them): `Hammer: 60: 10 Bicep: 60: 8` splits into
+  two exercises, each with its own set.
+- **A stray parenthetical between name and weight or after a rep count** —
+  `Upper back row: (no straps) 115: 7, 100: 7` and `Lat pulldown: 100 - 8,
+  85: 12 (1 partial)` — is stripped rather than breaking the parse.
+- Free-text annotations with a bare number but no real date signal (`2 WEEK
+  BREAK`, `1 WEEK SICKNESS`) are never misread as a date — fuzzy date
+  parsing only kicks in when there's an actual `/`- or `-`-separated digit
+  pair or a month name, so these become session notes instead of silently
+  corrupting the date chain (dateutil's fuzzy mode will otherwise happily
+  read "2 WEEK BREAK" as day 2 of some month).
+
+A handful of genuinely ambiguous or free-text lines still just get skipped
+with a warning rather than guessed at — a line with two exercises' worth of
+data crammed together with no separator at all, a missing comma, a running
+time, a rest-day tally with no numbers ("2 sets of calf raises"). These show
+up in the review screen's warnings so you can see exactly what got dropped
+and fix it by hand if it matters.
+
 ## Grouping exercises for trend continuity
 
 Different names or machines for the same movement (e.g. "Flat chest press"
@@ -180,23 +217,35 @@ original brief, to keep the first pass focused):
 
 ## Open items carried over from the brief
 
-The parser and seed data were built from the one sample Push day provided
-at kickoff, plus reasonable defaults for Pull/Legs/Day4 (see
-`app/seed_data.py`) and a flexible date-line parser (tries several common
-date formats since the exact Notes-app format wasn't available yet). Two
-things worth confirming once the real 2–3 years of notes are on hand:
+The parser and seed data were originally built from one sample Push day,
+then validated against the full ~2.5-year backfill (365 sessions parsed,
+28 lines skipped with warnings — all genuinely ambiguous or out-of-scope
+source text, see above). What's resolved and what's still worth a look:
 
-1. **Date line format** — the parser accepts most common formats
-   (`1/5/2026`, `2026-01-05`, `Jan 5`, weekday-prefixed, etc.) via
-   `dateutil`, but hasn't been validated against your actual Notes export.
-   If real dates fail to parse, they'll show up as `warnings` in the parse
-   response (surfaced in the import UI) rather than silently misfiring.
-2. **Pull/Legs/Day4 exercise lists** in `split_config` are best-guess
-   placeholders (only a Push day was available at kickoff) — worth a pass
-   once real data shows what those days actually look like. Low risk either
-   way since workout-type is always user-overridable per session.
-3. **"Flat bench press" (from the original sample) probably belongs in the
-   "Chest Press" group** alongside "Barbell bench press" — they read as the
-   same lift under two different names, but that wasn't explicitly
-   confirmed, so it was left out of the seeded groups. Add it via the
-   Manage Exercises page if so.
+- **Date line format** — confirmed against real data: every real date line
+  in the full history uses `M/D`, `M/D/YY`, or `M/D/YYYY` (optionally with
+  a trailing colon). The parser also tolerates month names and
+  weekday-prefixes via `dateutil` for future flexibility, but only ever
+  attempts that fuzzier matching when there's a real date-like signal
+  (a `/`-or-`-`-separated digit pair, or a month name) — see "Additional
+  raw-note formats supported" above for why that guard matters.
+- **Pull/Legs/Day4 exercise lists** in `split_config` are still the
+  original best-guess placeholders from kickoff (the backfill data is Push
+  and Pull only) — low risk since workout-type is always user-overridable
+  per session, but worth a pass once Legs/Day4 notes get backfilled.
+- **"Flat bench press" and "RDL"/"Romanian deadlift"** are now grouped
+  (confirmed as the same lifts under different names). The backfill
+  surfaced many more naming clusters worth a look on the Manage Exercises
+  page before or during a full import — e.g. "Rear delt flys" alone is
+  written at least 4 different ways, and there's a large tricep-extension
+  and lat-raise family of near-duplicate names. Grouping only affects how
+  charts aggregate, so it's safe to do incrementally rather than all at
+  once.
+- **Assisted pull-ups** (`Assisted pull up: 45 - 5, 55 - 8`) record an
+  *assistance* weight, where a higher number means an *easier* rep, not a
+  harder one — the opposite of every other weight_type. The app has no
+  "inverse" weight type, so these currently get tracked as a plain number
+  like any other; a 1RM/trend chart on them will read backwards (higher
+  assistance showing as "progress"). Low priority given how few sessions
+  use assisted reps, but worth knowing before trusting that particular
+  chart.
