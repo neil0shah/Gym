@@ -204,7 +204,7 @@ yourself), not a signup system — there's only one person using this app.
 ### Where to actually run it
 
 You need a host that keeps a Python process running continuously with a
-persistent disk (for `data/gym.db`) — not a purely static host. Two
+persistent disk (for `data/gym.db`) — not a purely static host. Three
 reasonable paths:
 
 1. **Fly.io** (recommended, and what this repo is set up for) — a
@@ -217,7 +217,17 @@ reasonable paths:
    (same idea: build the Dockerfile, attach a volume at `data/`, set the
    three env vars above), but their free tiers don't include persistent
    disks, so `data/gym.db` would be wiped on every restart.
-2. **Self-hosted + Tailscale** — run the app on a machine that stays on
+2. **PythonAnywhere** — no card required at all, and everything (console,
+   file editor, deploy) happens through their website, so it works even on
+   a locked-down computer where you can't install a CLI tool. The trade-off
+   is a manual, browser-based setup: it only serves WSGI apps on the free
+   tier, so this FastAPI (ASGI) app needs `a2wsgi` (already in
+   `requirements.txt`) to bridge the two in the WSGI config file PythonAnywhere
+   generates for you. Persistent storage is just your normal home directory
+   there — no separate volume to create. Free accounts do need a login to
+   the PythonAnywhere website at least once every 3 months or the app gets
+   paused.
+3. **Self-hosted + Tailscale** — run the app on a machine that stays on
    (a home server, a Raspberry Pi, or a laptop you don't fully shut down),
    install [Tailscale](https://tailscale.com) on it and on your phone, and
    reach the app via its private Tailscale address. Never touches the
