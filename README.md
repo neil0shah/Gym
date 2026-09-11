@@ -198,8 +198,37 @@ the same across restarts, or you'll get logged out every time the server
 restarts. With all three set, every page and API endpoint requires logging
 in first, and the session cookie keeps you signed in for 90 days.
 
-This is intentionally a single hardcoded account (one `AUTH_EMAIL` you set
-yourself), not a signup system — there's only one person using this app.
+`AUTH_EMAIL`/`AUTH_PASSWORD_HASH` bootstrap exactly one account — yours, the
+owner — the first time the app starts with them set. That's the only account
+env vars ever create.
+
+### Letting someone else use it — their own login, their own data
+
+Every account's exercises, groups, and workout history are completely
+separate — nothing is shared between accounts, even when two people log the
+same exercise name (each account has its own copy, not a shared row). To add
+a second login, run this once from the project root, in the same environment
+the app itself runs in (the PythonAnywhere console, or `fly ssh console` on
+Fly.io):
+
+```bash
+python3 -m app.create_user friend@example.com
+```
+
+It'll ask for a password (not shown as you type, never sent anywhere), create
+the account, and seed it with the same default exercise list a fresh
+deployment starts with. They can log in immediately at the same URL with
+that email and password, and will only ever see their own data.
+
+There's deliberately no public signup page — every account is created this
+way, by whoever runs the app. This app has no email verification, password
+reset, or login-attempt rate limiting, which would all be expected of a
+public signup flow; keeping account creation to a deliberate one-line command
+is what makes skipping those reasonable for something this small.
+
+Already deployed and used by just you? Nothing changes — your existing data
+migrates automatically to your own account the first time the app starts
+after upgrading (matched to your `AUTH_EMAIL`), and stays exactly as it was.
 
 ### Where to actually run it
 
@@ -306,6 +335,9 @@ Implemented (phases 1–3, 5, and part of 6 from the original build plan):
   override, and an editable per-session note
 - Manage Exercises page to group renamed/varied movements for trend
   continuity
+- Multi-user accounts: opt-in login (`app/auth.py`), each account's
+  exercises/groups/history completely isolated from every other account's,
+  new accounts added via `python3 -m app.create_user <email>`
 - Progress page: per-exercise weight/est.-1RM trend, reps-at-weight trend,
   volume-over-time (bar per week/month), workout frequency, and a PR
   tracker (best estimated 1RM ever per exercise, via the Epley formula),

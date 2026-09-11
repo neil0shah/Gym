@@ -48,6 +48,11 @@ body {
     background: var(--panel-alt);
 }
 
+.topnav .current-user {
+    color: var(--text-dim);
+    font-size: 0.85em;
+}
+
 .container {
     max-width: 1100px;
     margin: 0 auto;

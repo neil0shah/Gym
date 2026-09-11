@@ -25,6 +25,21 @@ DEFAULT_BAR_WEIGHT = 45.0
 DEFAULT_BODYWEIGHT_ESTIMATE = 160.0
 
 
+class User(Base):
+    """One login. Every account's exercises, groups, and sessions are
+    completely separate — nothing is shared between accounts. With login
+    disabled (no AUTH_EMAIL/AUTH_PASSWORD_HASH set), a single fixed local
+    account is used automatically so every query below can assume a current
+    user without extra branching.
+    """
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, nullable=False, unique=True, index=True)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class ExerciseGroup(Base):
     """A user-defined bucket combining exercise names that are really the same
     movement (e.g. "Flat chest press" and "Barbell bench press"), so progress
@@ -33,16 +48,21 @@ class ExerciseGroup(Base):
     __tablename__ = "exercise_groups"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False, unique=True)
+    name = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     exercises = relationship("Exercise", back_populates="group")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_exercise_group_user_name"),
+    )
 
 
 class Exercise(Base):
     __tablename__ = "exercises"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False, unique=True, index=True)
+    name = Column(String, nullable=False, index=True)
     weight_type = Column(String, nullable=False)
     # Dual-purpose fixed-weight override: bar weight for barbell_plate_per_side
     # (default 45), assumed bodyweight for bodyweight_fixed (default 160).
@@ -57,9 +77,14 @@ class Exercise(Base):
     # same movement grouped alongside it (e.g. "Single arm Preacher curl").
     # Meaningless for dumbbell_each (already always per-hand).
     combined_both_sides = Column(Boolean, nullable=False, default=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     session_exercises = relationship("SessionExercise", back_populates="exercise")
     group = relationship("ExerciseGroup", back_populates="exercises")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_exercise_user_name"),
+    )
 
     def total_weight_for(self, weight_recorded: float) -> float:
         if self.weight_type == BARBELL_PLATE_PER_SIDE:
@@ -85,6 +110,7 @@ class Session(Base):
     raw_note_text = Column(Text, nullable=True)
     note = Column(Text, nullable=True)  # free-text context, e.g. "California - No straps"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     session_exercises = relationship(
         "SessionExercise", back_populates="session",

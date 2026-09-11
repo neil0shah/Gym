@@ -112,12 +112,18 @@ SPLIT_CONFIG = [
 ]
 
 
-def seed_if_empty(db: DBSession) -> None:
-    if db.query(Exercise).count() == 0:
+def seed_if_empty(db: DBSession, user_id: int) -> None:
+    """Seed one account's default exercise list/groups (every account starts
+    from the same starting point, then diverges as each person logs their
+    own workouts). split_config stays shared/global across accounts — it's
+    just workout-type auto-tagging vocabulary, not personal data.
+    """
+    if db.query(Exercise).filter(Exercise.user_id == user_id).count() == 0:
         for name, weight_type in EXERCISE_CONFIG.items():
             db.add(Exercise(
                 name=name, weight_type=weight_type,
                 combined_both_sides=name in COMBINED_BOTH_SIDES_EXERCISES,
+                user_id=user_id,
             ))
         db.commit()
 
@@ -132,12 +138,12 @@ def seed_if_empty(db: DBSession) -> None:
                 ))
         db.commit()
 
-    if db.query(ExerciseGroup).count() == 0:
+    if db.query(ExerciseGroup).filter(ExerciseGroup.user_id == user_id).count() == 0:
         for group_name, exercise_names in EXERCISE_GROUPS.items():
-            group = ExerciseGroup(name=group_name)
+            group = ExerciseGroup(name=group_name, user_id=user_id)
             db.add(group)
             db.flush()
-            db.query(Exercise).filter(Exercise.name.in_(exercise_names)).update(
-                {"group_id": group.id}, synchronize_session=False
-            )
+            db.query(Exercise).filter(
+                Exercise.name.in_(exercise_names), Exercise.user_id == user_id,
+            ).update({"group_id": group.id}, synchronize_session=False)
         db.commit()

@@ -13,10 +13,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 
 from app.database import Base, engine, get_db, run_migrations
-from app import models, schemas, seed_data
+from app import models, schemas
 from app.auth import (
     AUTH_ENABLED, NotAuthenticated, SESSION_MAX_AGE_SECONDS,
-    not_authenticated_handler, require_login, verify_credentials,
+    bootstrap_owner_and_seed, get_current_user, not_authenticated_handler,
+    require_login, verify_credentials,
 )
 from app.lookup import get_known_exercises, get_split_config, get_workout_types
 from app.parser import parse_notes
@@ -50,7 +51,7 @@ templates.env.globals["auth_enabled"] = AUTH_ENABLED
 def startup_seed():
     db = next(get_db())
     try:
-        seed_data.seed_if_empty(db)
+        bootstrap_owner_and_seed(db)
     finally:
         db.close()
 
@@ -65,12 +66,16 @@ def login_page(request: Request):
 
 
 @app.post("/login")
-def login_submit(request: Request, email: str = Form(...), password: str = Form(...)):
-    if not verify_credentials(email, password):
+def login_submit(
+    request: Request, email: str = Form(...), password: str = Form(...),
+    db: DBSession = Depends(get_db),
+):
+    user = verify_credentials(db, email, password)
+    if user is None:
         return templates.TemplateResponse(
             "login.html", {"request": request, "error": "Incorrect email or password."}, status_code=401,
         )
-    request.session["authenticated"] = True
+    request.session["user_id"] = user.id
     return RedirectResponse(url="/import", status_code=302)
 
 
@@ -90,18 +95,24 @@ def root():
 
 
 @app.get("/import")
-def import_page(request: Request):
-    return templates.TemplateResponse("import.html", {"request": request})
+def import_page(request: Request, current_user: models.User = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        "import.html", {"request": request, "current_user_email": current_user.email}
+    )
 
 
 @app.get("/progress")
-def progress_page(request: Request):
-    return templates.TemplateResponse("progress.html", {"request": request})
+def progress_page(request: Request, current_user: models.User = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        "progress.html", {"request": request, "current_user_email": current_user.email}
+    )
 
 
 @app.get("/exercises")
-def exercises_page(request: Request):
-    return templates.TemplateResponse("exercises.html", {"request": request})
+def exercises_page(request: Request, current_user: models.User = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        "exercises.html", {"request": request, "current_user_email": current_user.email}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +120,11 @@ def exercises_page(request: Request):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/parse", response_model=schemas.ParseResponse)
-def api_parse(req: schemas.ParseRequest, db: DBSession = Depends(get_db)):
-    known_exercises = get_known_exercises(db)
+def api_parse(
+    req: schemas.ParseRequest, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    known_exercises = get_known_exercises(db, current_user.id)
     split_config = get_split_config(db)
     result = parse_notes(req.raw_text, known_exercises, split_config)
     return schemas.ParseResponse(
@@ -152,7 +166,10 @@ def api_parse(req: schemas.ParseRequest, db: DBSession = Depends(get_db)):
 
 
 @app.post("/api/save", response_model=schemas.SaveResponse)
-def api_save(req: schemas.SaveRequest, db: DBSession = Depends(get_db)):
+def api_save(
+    req: schemas.SaveRequest, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     saved_session_ids = []
     new_exercise_count = 0
 
@@ -163,6 +180,7 @@ def api_save(req: schemas.SaveRequest, db: DBSession = Depends(get_db)):
             workout_type=session_in.workout_type,
             raw_note_text=session_in.raw_text,
             note=session_in.note,
+            user_id=current_user.id,
         )
         db.add(session_row)
         db.flush()  # get session_row.id
@@ -170,7 +188,10 @@ def api_save(req: schemas.SaveRequest, db: DBSession = Depends(get_db)):
         for exercise_in in session_in.exercises:
             exercise_row = (
                 db.query(models.Exercise)
-                .filter(func.lower(models.Exercise.name) == exercise_in.name.lower())
+                .filter(
+                    func.lower(models.Exercise.name) == exercise_in.name.lower(),
+                    models.Exercise.user_id == current_user.id,
+                )
                 .first()
             )
             if exercise_row is None:
@@ -179,6 +200,7 @@ def api_save(req: schemas.SaveRequest, db: DBSession = Depends(get_db)):
                     weight_type=exercise_in.weight_type,
                     bar_weight=exercise_in.bar_weight,
                     combined_both_sides=exercise_in.combined_both_sides,
+                    user_id=current_user.id,
                 )
                 db.add(exercise_row)
                 db.flush()
@@ -223,8 +245,11 @@ def api_save(req: schemas.SaveRequest, db: DBSession = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/exercises", response_model=List[schemas.ExerciseListItem])
-def api_exercises(has_data: bool = False, db: DBSession = Depends(get_db)):
-    query = db.query(models.Exercise)
+def api_exercises(
+    has_data: bool = False, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    query = db.query(models.Exercise).filter(models.Exercise.user_id == current_user.id)
     if has_data:
         query = query.filter(
             db.query(models.SessionExercise)
@@ -248,8 +273,13 @@ def api_exercises(has_data: bool = False, db: DBSession = Depends(get_db)):
 
 
 @app.put("/api/exercises/{exercise_id}", response_model=schemas.ExerciseListItem)
-def api_update_exercise(exercise_id: int, req: schemas.ExerciseUpdate, db: DBSession = Depends(get_db)):
-    exercise = db.query(models.Exercise).filter(models.Exercise.id == exercise_id).first()
+def api_update_exercise(
+    exercise_id: int, req: schemas.ExerciseUpdate, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    exercise = db.query(models.Exercise).filter(
+        models.Exercise.id == exercise_id, models.Exercise.user_id == current_user.id,
+    ).first()
     if exercise is None:
         raise HTTPException(status_code=404, detail="Exercise not found")
     if req.weight_type is not None:
@@ -290,42 +320,62 @@ def _exercise_group_item(group: models.ExerciseGroup) -> schemas.ExerciseGroupIt
 
 
 @app.get("/api/exercise_groups", response_model=List[schemas.ExerciseGroupItem])
-def api_list_exercise_groups(db: DBSession = Depends(get_db)):
-    groups = db.query(models.ExerciseGroup).order_by(models.ExerciseGroup.name).all()
+def api_list_exercise_groups(
+    db: DBSession = Depends(get_db), current_user: models.User = Depends(get_current_user),
+):
+    groups = (
+        db.query(models.ExerciseGroup)
+        .filter(models.ExerciseGroup.user_id == current_user.id)
+        .order_by(models.ExerciseGroup.name)
+        .all()
+    )
     return [_exercise_group_item(g) for g in groups]
 
 
 @app.post("/api/exercise_groups", response_model=schemas.ExerciseGroupItem)
-def api_create_exercise_group(req: schemas.ExerciseGroupCreate, db: DBSession = Depends(get_db)):
-    existing = db.query(models.ExerciseGroup).filter(func.lower(models.ExerciseGroup.name) == req.name.lower()).first()
+def api_create_exercise_group(
+    req: schemas.ExerciseGroupCreate, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    existing = db.query(models.ExerciseGroup).filter(
+        func.lower(models.ExerciseGroup.name) == req.name.lower(),
+        models.ExerciseGroup.user_id == current_user.id,
+    ).first()
     if existing is not None:
         raise HTTPException(status_code=400, detail=f"A group named {req.name!r} already exists")
-    group = models.ExerciseGroup(name=req.name)
+    group = models.ExerciseGroup(name=req.name, user_id=current_user.id)
     db.add(group)
     db.flush()
     if req.exercise_ids:
-        db.query(models.Exercise).filter(models.Exercise.id.in_(req.exercise_ids)).update(
-            {"group_id": group.id}, synchronize_session=False
-        )
+        db.query(models.Exercise).filter(
+            models.Exercise.id.in_(req.exercise_ids), models.Exercise.user_id == current_user.id,
+        ).update({"group_id": group.id}, synchronize_session=False)
     db.commit()
     db.refresh(group)
     return _exercise_group_item(group)
 
 
 @app.put("/api/exercise_groups/{group_id}", response_model=schemas.ExerciseGroupItem)
-def api_update_exercise_group(group_id: int, req: schemas.ExerciseGroupUpdate, db: DBSession = Depends(get_db)):
-    group = db.query(models.ExerciseGroup).filter(models.ExerciseGroup.id == group_id).first()
+def api_update_exercise_group(
+    group_id: int, req: schemas.ExerciseGroupUpdate, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    group = db.query(models.ExerciseGroup).filter(
+        models.ExerciseGroup.id == group_id, models.ExerciseGroup.user_id == current_user.id,
+    ).first()
     if group is None:
         raise HTTPException(status_code=404, detail="Group not found")
     if req.name is not None:
         group.name = req.name
     if req.add_exercise_ids:
-        db.query(models.Exercise).filter(models.Exercise.id.in_(req.add_exercise_ids)).update(
-            {"group_id": group.id}, synchronize_session=False
-        )
+        db.query(models.Exercise).filter(
+            models.Exercise.id.in_(req.add_exercise_ids), models.Exercise.user_id == current_user.id,
+        ).update({"group_id": group.id}, synchronize_session=False)
     if req.remove_exercise_ids:
         db.query(models.Exercise).filter(
-            models.Exercise.id.in_(req.remove_exercise_ids), models.Exercise.group_id == group.id
+            models.Exercise.id.in_(req.remove_exercise_ids),
+            models.Exercise.group_id == group.id,
+            models.Exercise.user_id == current_user.id,
         ).update({"group_id": None}, synchronize_session=False)
     db.commit()
     db.refresh(group)
@@ -333,13 +383,18 @@ def api_update_exercise_group(group_id: int, req: schemas.ExerciseGroupUpdate, d
 
 
 @app.delete("/api/exercise_groups/{group_id}")
-def api_delete_exercise_group(group_id: int, db: DBSession = Depends(get_db)):
-    group = db.query(models.ExerciseGroup).filter(models.ExerciseGroup.id == group_id).first()
+def api_delete_exercise_group(
+    group_id: int, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    group = db.query(models.ExerciseGroup).filter(
+        models.ExerciseGroup.id == group_id, models.ExerciseGroup.user_id == current_user.id,
+    ).first()
     if group is None:
         raise HTTPException(status_code=404, detail="Group not found")
-    db.query(models.Exercise).filter(models.Exercise.group_id == group_id).update(
-        {"group_id": None}, synchronize_session=False
-    )
+    db.query(models.Exercise).filter(
+        models.Exercise.group_id == group_id, models.Exercise.user_id == current_user.id,
+    ).update({"group_id": None}, synchronize_session=False)
     db.delete(group)
     db.commit()
     return {"deleted": True}
@@ -349,19 +404,25 @@ def api_delete_exercise_group(group_id: int, db: DBSession = Depends(get_db)):
 # Progress
 # ---------------------------------------------------------------------------
 
-def _base_set_query(db: DBSession):
+def _base_set_query(db: DBSession, user_id: int):
+    # The Exercise.user_id filter is the load-bearing part of this query: it's
+    # what stops one account's exercise_id/group_id from ever pulling another
+    # account's workout data, even if a foreign id is passed in.
     return (
         db.query(models.SetRecord, models.SessionExercise, models.Session, models.Exercise)
         .join(models.SessionExercise, models.SetRecord.session_exercise_id == models.SessionExercise.id)
         .join(models.Session, models.SessionExercise.session_id == models.Session.id)
         .join(models.Exercise, models.SessionExercise.exercise_id == models.Exercise.id)
+        .filter(models.Exercise.user_id == user_id)
     )
 
 
-def _group_exercise_ids(db: DBSession, group_id: int) -> List[int]:
+def _group_exercise_ids(db: DBSession, group_id: int, user_id: int) -> List[int]:
     return [
         row.id for row in
-        db.query(models.Exercise.id).filter(models.Exercise.group_id == group_id).all()
+        db.query(models.Exercise.id)
+        .filter(models.Exercise.group_id == group_id, models.Exercise.user_id == user_id)
+        .all()
     ]
 
 
@@ -393,8 +454,9 @@ def api_progress_exercise(
     order_index: Optional[int] = None,
     workout_type: Optional[str] = None,
     db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
-    query = _base_set_query(db).filter(models.Exercise.id == exercise_id)
+    query = _base_set_query(db, current_user.id).filter(models.Exercise.id == exercise_id)
     if start_date is not None:
         query = query.filter(models.Session.date >= start_date)
     if end_date is not None:
@@ -415,15 +477,16 @@ def api_progress_group(
     order_index: Optional[int] = None,
     workout_type: Optional[str] = None,
     db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
     """Same as /api/progress/exercise/{id} but aggregated across every exercise
     in the group, so renamed/varied movements (e.g. "Flat chest press" and
     "Barbell bench press") show up as one continuous trend.
     """
-    member_ids = _group_exercise_ids(db, group_id)
+    member_ids = _group_exercise_ids(db, group_id, current_user.id)
     if not member_ids:
         return []
-    query = _base_set_query(db).filter(models.Exercise.id.in_(member_ids))
+    query = _base_set_query(db, current_user.id).filter(models.Exercise.id.in_(member_ids))
     if start_date is not None:
         query = query.filter(models.Session.date >= start_date)
     if end_date is not None:
@@ -452,10 +515,11 @@ def api_progress_volume(
     end_date: Optional[date] = None,
     period: str = Query("week", pattern="^(week|month)$"),
     db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
-    query = _base_set_query(db)
+    query = _base_set_query(db, current_user.id)
     if group_id is not None:
-        member_ids = _group_exercise_ids(db, group_id)
+        member_ids = _group_exercise_ids(db, group_id, current_user.id)
         if not member_ids:
             return []
         query = query.filter(models.Exercise.id.in_(member_ids))
@@ -488,8 +552,9 @@ def api_progress_frequency(
     end_date: Optional[date] = None,
     period: str = Query("week", pattern="^(week|month)$"),
     db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
-    query = db.query(models.Session)
+    query = db.query(models.Session).filter(models.Session.user_id == current_user.id)
     if workout_type is not None:
         query = query.filter(models.Session.workout_type == workout_type)
     if start_date is not None:
@@ -512,8 +577,9 @@ def api_progress_frequency(
 def api_progress_prs(
     exercise_id: Optional[int] = None,
     db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
-    query = _base_set_query(db)
+    query = _base_set_query(db, current_user.id)
     if exercise_id is not None:
         query = query.filter(models.Exercise.id == exercise_id)
 

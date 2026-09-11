@@ -3,30 +3,53 @@ from types import SimpleNamespace
 import bcrypt
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
+from app.database import Base
+from app import models
 from app import auth as auth_module
 
 
-def make_request(path, authenticated=False):
-    session = {"authenticated": True} if authenticated else {}
+def make_request(path, user_id=None):
+    session = {"user_id": user_id} if user_id else {}
     return SimpleNamespace(url=SimpleNamespace(path=path), session=session)
 
 
-def test_verify_credentials_disabled_returns_false(monkeypatch):
+@pytest.fixture
+def db():
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine)()
+    yield session
+    session.close()
+
+
+def test_verify_credentials_disabled_returns_none(db, monkeypatch):
     monkeypatch.setattr(auth_module, "AUTH_ENABLED", False)
-    assert auth_module.verify_credentials("a@b.com", "whatever") is False
+    assert auth_module.verify_credentials(db, "a@b.com", "whatever") is None
 
 
-def test_verify_credentials_correct_password(monkeypatch):
+def test_verify_credentials_correct_password(db, monkeypatch):
     pw_hash = bcrypt.hashpw(b"secret123", bcrypt.gensalt()).decode()
     monkeypatch.setattr(auth_module, "AUTH_ENABLED", True)
     monkeypatch.setattr(auth_module, "AUTH_EMAIL", "me@example.com")
     monkeypatch.setattr(auth_module, "AUTH_PASSWORD_HASH", pw_hash)
+    db.add(models.User(email="me@example.com", password_hash=pw_hash))
+    db.commit()
 
-    assert auth_module.verify_credentials("me@example.com", "secret123") is True
-    assert auth_module.verify_credentials("ME@EXAMPLE.COM", "secret123") is True
-    assert auth_module.verify_credentials("me@example.com", "wrong-password") is False
-    assert auth_module.verify_credentials("someone-else@example.com", "secret123") is False
+    user = auth_module.verify_credentials(db, "me@example.com", "secret123")
+    assert user is not None and user.email == "me@example.com"
+    assert auth_module.verify_credentials(db, "ME@EXAMPLE.COM", "secret123") is not None
+    assert auth_module.verify_credentials(db, "me@example.com", "wrong-password") is None
+    assert auth_module.verify_credentials(db, "someone-else@example.com", "secret123") is None
+
+
+def test_verify_credentials_unknown_email_returns_none(db, monkeypatch):
+    monkeypatch.setattr(auth_module, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_module, "AUTH_EMAIL", "me@example.com")
+    monkeypatch.setattr(auth_module, "AUTH_PASSWORD_HASH", "unused")
+    assert auth_module.verify_credentials(db, "nobody@example.com", "whatever") is None
 
 
 def test_require_login_noop_when_disabled(monkeypatch):
@@ -56,5 +79,57 @@ def test_require_login_returns_401_for_api_routes_when_unauthenticated(monkeypat
 
 def test_require_login_passes_once_authenticated(monkeypatch):
     monkeypatch.setattr(auth_module, "AUTH_ENABLED", True)
-    auth_module.require_login(make_request("/import", authenticated=True))
-    auth_module.require_login(make_request("/api/exercises", authenticated=True))
+    auth_module.require_login(make_request("/import", user_id=1))
+    auth_module.require_login(make_request("/api/exercises", user_id=1))
+
+
+def test_get_current_user_disabled_returns_fixed_local_account(db, monkeypatch):
+    monkeypatch.setattr(auth_module, "AUTH_ENABLED", False)
+    local = models.User(email=auth_module.LOCAL_USER_EMAIL, password_hash="")
+    db.add(local)
+    db.commit()
+
+    user = auth_module.get_current_user(make_request("/import"), db=db)
+    assert user.email == auth_module.LOCAL_USER_EMAIL
+
+
+def test_get_current_user_enabled_resolves_session_user_id(db, monkeypatch):
+    monkeypatch.setattr(auth_module, "AUTH_ENABLED", True)
+    user = models.User(email="me@example.com", password_hash="x")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    resolved = auth_module.get_current_user(make_request("/import", user_id=user.id), db=db)
+    assert resolved.id == user.id
+
+
+def test_get_current_user_enabled_raises_401_when_no_session(db, monkeypatch):
+    monkeypatch.setattr(auth_module, "AUTH_ENABLED", True)
+    with pytest.raises(HTTPException) as exc_info:
+        auth_module.get_current_user(make_request("/import"), db=db)
+    assert exc_info.value.status_code == 401
+
+
+def test_bootstrap_owner_and_seed_creates_owner_from_env(db, monkeypatch):
+    monkeypatch.setattr(auth_module, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_module, "AUTH_EMAIL", "owner@example.com")
+    monkeypatch.setattr(auth_module, "AUTH_PASSWORD_HASH", "some-hash")
+
+    auth_module.bootstrap_owner_and_seed(db)
+
+    user = db.query(models.User).filter(models.User.email == "owner@example.com").first()
+    assert user is not None
+    assert user.password_hash == "some-hash"
+    assert db.query(models.Exercise).filter(models.Exercise.user_id == user.id).count() > 0
+
+
+def test_bootstrap_owner_and_seed_is_idempotent(db, monkeypatch):
+    monkeypatch.setattr(auth_module, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_module, "AUTH_EMAIL", "owner@example.com")
+    monkeypatch.setattr(auth_module, "AUTH_PASSWORD_HASH", "some-hash")
+
+    auth_module.bootstrap_owner_and_seed(db)
+    auth_module.bootstrap_owner_and_seed(db)  # must not raise or duplicate
+
+    assert db.query(models.User).filter(models.User.email == "owner@example.com").count() == 1
