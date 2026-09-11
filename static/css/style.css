@@ -249,6 +249,22 @@ input, select {
     font-size: 1.1em;
 }
 
+.chart-wrap {
+    position: relative;
+    height: 280px;
+}
+
+@media (min-width: 700px) {
+    .chart-wrap { height: 340px; }
+}
+
+@media (max-width: 480px) {
+    .container { padding: 14px; }
+    .filters { flex-direction: column; gap: 10px; padding: 12px; }
+    .filters label { width: 100%; }
+    .filters select, .filters input { width: 100%; }
+}
+
 .pr-table {
     width: 100%;
     border-collapse: collapse;

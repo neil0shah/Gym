@@ -162,6 +162,9 @@ async function refreshExerciseCharts(filters) {
 }
 
 function drawEmptyMessage(canvas, message) {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#9aa3b2';
@@ -216,6 +219,7 @@ async function refreshFrequencyChart(filters) {
 function chartOptions(yLabel) {
     return {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: {
             legend: { labels: { color: '#e6e9ef' } },
         },
