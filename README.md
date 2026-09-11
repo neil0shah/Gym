@@ -304,7 +304,11 @@ backfill, not a one-time setup step. Group names are editable inline right
 in that table (click and type), and the exercise list only shows exercises
 you've actually logged data for — nothing from the seed defaults you haven't
 used — with ungrouped ones sorted first and highlighted amber, since those
-are the ones worth triaging.
+are the ones worth triaging. Each row's **Group** column is its own dropdown
+— pick a different group, or "— (none)" to ungroup, and it saves immediately
+with no separate button. Click an exercise's **name** to drill into the raw
+data behind its charts: every date it was logged, with the exact weight and
+reps recorded per set, newest first.
 
 ### Normalizing bilateral vs. unilateral variants within a group
 

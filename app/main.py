@@ -316,6 +316,14 @@ def api_update_exercise(
         exercise.bar_weight = req.bar_weight
     if req.combined_both_sides is not None:
         exercise.combined_both_sides = req.combined_both_sides
+    if "group_id" in req.model_fields_set:
+        if req.group_id is not None:
+            group = db.query(models.ExerciseGroup).filter(
+                models.ExerciseGroup.id == req.group_id, models.ExerciseGroup.user_id == current_user.id,
+            ).first()
+            if group is None:
+                raise HTTPException(status_code=404, detail="Group not found")
+        exercise.group_id = req.group_id
     db.commit()
     db.refresh(exercise)
     return schemas.ExerciseListItem(
@@ -333,6 +341,55 @@ def api_update_exercise(
 @app.get("/api/workout_types", response_model=List[str])
 def api_workout_types(db: DBSession = Depends(get_db)):
     return get_workout_types(db)
+
+
+@app.get("/api/exercises/{exercise_id}/history", response_model=List[schemas.ExerciseHistorySession])
+def api_exercise_history(
+    exercise_id: int, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Every session this exercise was logged in, most recent first, with
+    the raw per-set weight/reps as recorded (not the normalized total_weight
+    the Progress charts use) — for drilling into the underlying data behind
+    a chart from the Manage Exercises page.
+    """
+    exercise = db.query(models.Exercise).filter(
+        models.Exercise.id == exercise_id, models.Exercise.user_id == current_user.id,
+    ).first()
+    if exercise is None:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+    rows = (
+        db.query(models.SetRecord, models.SessionExercise, models.Session)
+        .join(models.SessionExercise, models.SetRecord.session_exercise_id == models.SessionExercise.id)
+        .join(models.Session, models.SessionExercise.session_id == models.Session.id)
+        .filter(models.SessionExercise.exercise_id == exercise_id)
+        .order_by(models.Session.date.desc(), models.SessionExercise.order_index.asc(), models.SetRecord.set_number.asc())
+        .all()
+    )
+
+    by_session_exercise: dict = {}
+    order: List[int] = []
+    for set_row, session_exercise, session in rows:
+        key = session_exercise.id
+        if key not in by_session_exercise:
+            by_session_exercise[key] = schemas.ExerciseHistorySession(
+                session_id=session.id,
+                date=session.date,
+                date_confidence=session.date_confidence,
+                workout_type=session.workout_type,
+                note=session.note,
+                sets=[],
+            )
+            order.append(key)
+        by_session_exercise[key].sets.append(schemas.ExerciseHistorySet(
+            set_number=set_row.set_number,
+            weight_recorded=set_row.weight_recorded,
+            reps_full=set_row.reps_full,
+            reps_partial=set_row.reps_partial,
+            raw_rep_string=set_row.raw_rep_string,
+        ))
+    return [by_session_exercise[key] for key in order]
 
 
 # ---------------------------------------------------------------------------

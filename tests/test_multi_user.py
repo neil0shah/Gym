@@ -1,6 +1,7 @@
 from datetime import date
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -187,3 +188,78 @@ def test_seed_if_empty_seeds_each_user_independently(db, two_users):
     seed_data.seed_if_empty(db, user_id=bob.id)
     bob_count_after = db.query(models.Exercise).filter(models.Exercise.user_id == bob.id).count()
     assert bob_count_after == alice_count
+
+
+def test_update_exercise_can_set_and_clear_group(db, two_users):
+    alice, bob = two_users
+    _log_one_set(db, alice, "Preacher curl", 100, 8, date(2024, 1, 1))
+    ex = db.query(models.Exercise).filter(models.Exercise.user_id == alice.id).one()
+    group = main_module.api_create_exercise_group(
+        schemas.ExerciseGroupCreate(name="Bicep Curl", exercise_ids=[]), db=db, current_user=alice,
+    )
+
+    updated = main_module.api_update_exercise(
+        ex.id, schemas.ExerciseUpdate(group_id=group.id), db=db, current_user=alice,
+    )
+    assert updated.group_id == group.id
+
+    cleared = main_module.api_update_exercise(
+        ex.id, schemas.ExerciseUpdate(group_id=None), db=db, current_user=alice,
+    )
+    assert cleared.group_id is None
+
+
+def test_update_exercise_omitting_group_id_leaves_it_untouched(db, two_users):
+    alice, bob = two_users
+    _log_one_set(db, alice, "Preacher curl", 100, 8, date(2024, 1, 1))
+    ex = db.query(models.Exercise).filter(models.Exercise.user_id == alice.id).one()
+    group = main_module.api_create_exercise_group(
+        schemas.ExerciseGroupCreate(name="Bicep Curl", exercise_ids=[ex.id]), db=db, current_user=alice,
+    )
+
+    # Only touching combined_both_sides — group_id key is absent from the
+    # request entirely, so it must not be cleared as a side effect.
+    updated = main_module.api_update_exercise(
+        ex.id, schemas.ExerciseUpdate(combined_both_sides=True), db=db, current_user=alice,
+    )
+    assert updated.group_id == group.id
+
+
+def test_update_exercise_cannot_assign_another_users_group(db, two_users):
+    alice, bob = two_users
+    _log_one_set(db, alice, "Preacher curl", 100, 8, date(2024, 1, 1))
+    ex = db.query(models.Exercise).filter(models.Exercise.user_id == alice.id).one()
+    bob_group = main_module.api_create_exercise_group(
+        schemas.ExerciseGroupCreate(name="Bob's Group", exercise_ids=[]), db=db, current_user=bob,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        main_module.api_update_exercise(
+            ex.id, schemas.ExerciseUpdate(group_id=bob_group.id), db=db, current_user=alice,
+        )
+    assert exc_info.value.status_code == 404
+    db.refresh(ex)
+    assert ex.group_id is None
+
+
+def test_exercise_history_orders_newest_first_with_raw_sets(db, two_users):
+    alice, bob = two_users
+    _log_one_set(db, alice, "Bench press", 135, 8, date(2024, 1, 1))
+    _log_one_set(db, alice, "Bench press", 140, 6, date(2024, 1, 8))
+    ex = db.query(models.Exercise).filter(models.Exercise.user_id == alice.id).one()
+
+    history = main_module.api_exercise_history(ex.id, db=db, current_user=alice)
+    assert [h.date for h in history] == [date(2024, 1, 8), date(2024, 1, 1)]
+    assert history[0].sets[0].weight_recorded == 140
+    assert history[1].sets[0].weight_recorded == 135
+
+
+def test_exercise_history_scoped_to_owner(db, two_users):
+    alice, bob = two_users
+    _log_one_set(db, alice, "Squat", 225, 5, date(2024, 1, 1))
+    _log_one_set(db, bob, "Squat", 185, 5, date(2024, 1, 1))
+    bob_ex = db.query(models.Exercise).filter(models.Exercise.user_id == bob.id).one()
+
+    with pytest.raises(HTTPException) as exc_info:
+        main_module.api_exercise_history(bob_ex.id, db=db, current_user=alice)
+    assert exc_info.value.status_code == 404

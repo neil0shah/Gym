@@ -89,16 +89,20 @@ function renderExercises() {
         if (!!a.group_id !== !!b.group_id) return a.group_id ? 1 : -1;
         return a.name.localeCompare(b.name);
     });
+    const groupOptions = '<option value="">— (none)</option>' +
+        groups.map((g) => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');
+
     sorted.forEach((e) => {
         const tr = document.createElement('tr');
         if (!e.group_id) tr.classList.add('unrecognized');
         tr.innerHTML = `
             <td><input type="checkbox" class="ex-checkbox" data-id="${e.id}"></td>
-            <td>${escapeHtml(e.name)}</td>
+            <td><button type="button" class="ex-name-link" data-id="${e.id}">${escapeHtml(e.name)}</button></td>
             <td>${WEIGHT_TYPE_LABELS[e.weight_type] || e.weight_type}</td>
             <td><input type="checkbox" class="ex-combined-checkbox" data-id="${e.id}" ${e.combined_both_sides ? 'checked' : ''}></td>
-            <td>${e.group_name ? escapeHtml(e.group_name) : '—'}</td>
+            <td><select class="ex-group-select" data-id="${e.id}">${groupOptions}</select></td>
         `;
+        tr.querySelector('.ex-group-select').value = e.group_id || '';
         exercisesTableBody.appendChild(tr);
     });
     selectAllCheckbox.checked = false;
@@ -120,7 +124,83 @@ function renderExercises() {
             setStatus('Updated.', false);
         });
     });
+
+    exercisesTableBody.querySelectorAll('.ex-group-select').forEach((select) => {
+        select.addEventListener('change', async () => {
+            const id = select.dataset.id;
+            const groupId = select.value ? parseInt(select.value, 10) : null;
+            const resp = await fetch(`/api/exercises/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ group_id: groupId }),
+            });
+            if (!resp.ok) {
+                setStatus('Failed to update group: ' + await resp.text(), true);
+                await loadAll();
+                return;
+            }
+            setStatus('Updated.', false);
+            await loadAll();
+        });
+    });
+
+    exercisesTableBody.querySelectorAll('.ex-name-link').forEach((btn) => {
+        btn.addEventListener('click', () => openHistoryModal(parseInt(btn.dataset.id, 10)));
+    });
 }
+
+const historyModalOverlay = document.getElementById('history-modal-overlay');
+const historyModalTitle = document.getElementById('history-modal-title');
+const historyModalBody = document.getElementById('history-modal-body');
+const historyModalClose = document.getElementById('history-modal-close');
+
+async function openHistoryModal(exerciseId) {
+    const ex = exercises.find((e) => e.id === exerciseId);
+    historyModalTitle.textContent = ex ? ex.name : 'Exercise history';
+    historyModalBody.innerHTML = '<p class="hint">Loading…</p>';
+    historyModalOverlay.hidden = false;
+
+    const resp = await fetch(`/api/exercises/${exerciseId}/history`);
+    if (!resp.ok) {
+        historyModalBody.innerHTML = '<p class="status error">Failed to load history.</p>';
+        return;
+    }
+    const sessions = await resp.json();
+    if (sessions.length === 0) {
+        historyModalBody.innerHTML = '<p class="hint">No logged sets for this exercise yet.</p>';
+        return;
+    }
+    historyModalBody.innerHTML = sessions.map((s) => `
+        <div class="history-entry">
+            <div class="history-entry-head">
+                <span class="history-entry-date">${s.date}</span>
+                ${s.workout_type ? `<span class="history-entry-type">${escapeHtml(s.workout_type)}</span>` : ''}
+                ${s.date_confidence === 'estimated' ? '<span class="confidence-badge estimated">Estimated date</span>' : ''}
+                ${s.note ? `<span class="history-entry-note">${escapeHtml(s.note)}</span>` : ''}
+            </div>
+            <div class="history-sets">
+                ${s.sets.map((set) => `
+                    <span class="history-set">
+                        <span class="set-idx">#${set.set_number}</span>
+                        ${set.weight_recorded}&nbsp;lb &times; ${set.reps_full}${set.reps_partial ? `+${set.reps_partial}` : ''}
+                    </span>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+function closeHistoryModal() {
+    historyModalOverlay.hidden = true;
+}
+
+historyModalClose.addEventListener('click', closeHistoryModal);
+historyModalOverlay.addEventListener('click', (e) => {
+    if (e.target === historyModalOverlay) closeHistoryModal();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !historyModalOverlay.hidden) closeHistoryModal();
+});
 
 function escapeHtml(s) {
     const div = document.createElement('div');

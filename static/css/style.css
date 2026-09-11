@@ -295,3 +295,111 @@ input, select {
     background: var(--panel-alt);
     border-color: var(--border);
 }
+
+.ex-name-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+}
+.ex-name-link:hover {
+    color: var(--accent);
+    text-decoration-color: var(--accent);
+}
+
+.ex-group-select {
+    width: 100%;
+    min-width: 140px;
+}
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 7, 10, 0.6);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 6vh 16px;
+    z-index: 100;
+}
+.modal-overlay[hidden] {
+    display: none;
+}
+
+.modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.1em;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.4em;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.modal-close:hover { color: var(--text); }
+
+.modal-body {
+    padding: 16px 18px;
+    overflow-y: auto;
+}
+
+.history-entry {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+.history-entry:last-child { border-bottom: none; }
+
+.history-entry-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+.history-entry-date { font-weight: 600; }
+.history-entry-type { color: var(--text-dim); font-size: 0.85em; }
+.history-entry-note { color: var(--text-dim); font-size: 0.85em; font-style: italic; }
+
+.history-sets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.history-set {
+    background: var(--panel-alt);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 9px;
+    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+}
+.history-set .set-idx { color: var(--text-dim); }

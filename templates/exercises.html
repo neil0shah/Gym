@@ -29,7 +29,8 @@
         <button id="ungroup-btn">Remove selected from their group</button>
         <span id="exercises-status" class="status"></span>
     </div>
-    <p class="hint">Rows highlighted amber have no group yet — the most useful ones to sort first.</p>
+    <p class="hint">Rows highlighted amber have no group yet — the most useful ones to sort first. Click an
+        exercise's name to see every date it was logged, with the raw weight/reps behind the charts.</p>
     <table class="exercise-table" id="exercises-table">
         <thead>
             <tr>
@@ -43,6 +44,16 @@
         <tbody></tbody>
     </table>
 </section>
+
+<div class="modal-overlay" id="history-modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="history-modal-title">
+        <div class="modal-header">
+            <h2 id="history-modal-title">Exercise history</h2>
+            <button class="modal-close" id="history-modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body" id="history-modal-body"></div>
+    </div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script src="/static/js/exercises.js"></script>
