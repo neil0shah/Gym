@@ -221,12 +221,15 @@ reasonable paths:
    file editor, deploy) happens through their website, so it works even on
    a locked-down computer where you can't install a CLI tool. The trade-off
    is a manual, browser-based setup: it only serves WSGI apps on the free
-   tier, so this FastAPI (ASGI) app needs `a2wsgi` (already in
-   `requirements.txt`) to bridge the two in the WSGI config file PythonAnywhere
-   generates for you. Persistent storage is just your normal home directory
-   there — no separate volume to create. Free accounts do need a login to
-   the PythonAnywhere website at least once every 3 months or the app gets
-   paused.
+   tier, so this FastAPI (ASGI) app needs a small ASGI-to-WSGI bridge in the
+   WSGI config file PythonAnywhere generates for you — written directly into
+   that file using only the standard library (no extra dependency), since
+   third-party bridges like `a2wsgi` have been observed to hang indefinitely
+   under PythonAnywhere's WSGI server (504 timeouts with nothing in the error
+   log — the request never completes, so nothing ever raises). Persistent
+   storage is just your normal home directory there — no separate volume to
+   create. Free accounts do need a login to the PythonAnywhere website at
+   least once every 3 months or the app gets paused.
 3. **Self-hosted + Tailscale** — run the app on a machine that stays on
    (a home server, a Raspberry Pi, or a laptop you don't fully shut down),
    install [Tailscale](https://tailscale.com) on it and on your phone, and
