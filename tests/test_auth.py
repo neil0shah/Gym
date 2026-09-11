@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app import models
 from app import auth as auth_module
+from app import main as main_module
 
 
 def make_request(path, user_id=None):
@@ -61,6 +62,7 @@ def test_require_login_allows_login_and_static_paths_unauthenticated(monkeypatch
     monkeypatch.setattr(auth_module, "AUTH_ENABLED", True)
     auth_module.require_login(make_request("/login"))
     auth_module.require_login(make_request("/logout"))
+    auth_module.require_login(make_request("/signup"))
     auth_module.require_login(make_request("/static/js/import.js"))
 
 
@@ -133,3 +135,57 @@ def test_bootstrap_owner_and_seed_is_idempotent(db, monkeypatch):
     auth_module.bootstrap_owner_and_seed(db)  # must not raise or duplicate
 
     assert db.query(models.User).filter(models.User.email == "owner@example.com").count() == 1
+
+
+def test_create_account_success_hashes_password_and_seeds(db):
+    user = auth_module.create_account(db, "New.Friend@Example.com", "longenoughpw")
+    assert user.email == "new.friend@example.com"  # normalized
+    assert bcrypt.checkpw(b"longenoughpw", user.password_hash.encode())
+    assert db.query(models.Exercise).filter(models.Exercise.user_id == user.id).count() > 0
+
+
+def test_create_account_rejects_invalid_email(db):
+    with pytest.raises(auth_module.SignupError):
+        auth_module.create_account(db, "not-an-email", "longenoughpw")
+
+
+def test_create_account_rejects_short_password(db):
+    with pytest.raises(auth_module.SignupError):
+        auth_module.create_account(db, "someone@example.com", "short")
+
+
+def test_create_account_rejects_duplicate_email_case_insensitive(db):
+    auth_module.create_account(db, "someone@example.com", "longenoughpw")
+    with pytest.raises(auth_module.SignupError):
+        auth_module.create_account(db, "Someone@Example.com", "anotherlongpw")
+
+
+def test_create_account_leaves_other_accounts_untouched(db):
+    alice = auth_module.create_account(db, "alice@example.com", "longenoughpw1")
+    bob = auth_module.create_account(db, "bob@example.com", "longenoughpw2")
+    assert alice.id != bob.id
+    alice_count = db.query(models.Exercise).filter(models.Exercise.user_id == alice.id).count()
+    bob_count = db.query(models.Exercise).filter(models.Exercise.user_id == bob.id).count()
+    assert alice_count == bob_count > 0
+
+
+def test_signup_page_redirects_when_auth_disabled(monkeypatch):
+    monkeypatch.setattr(main_module, "AUTH_ENABLED", False)
+    response = main_module.signup_page(make_request("/signup"))
+    assert response.status_code == 302
+    assert response.headers["location"] == "/import"
+
+
+def test_signup_submit_creates_account_and_logs_in(db, monkeypatch):
+    monkeypatch.setattr(main_module, "AUTH_ENABLED", True)
+    request = make_request("/signup")
+    response = main_module.signup_submit(
+        request, email="new@example.com", password="longenoughpw",
+        confirm_password="longenoughpw", db=db,
+    )
+    assert response.status_code == 302
+    assert response.headers["location"] == "/import"
+
+    user = db.query(models.User).filter(models.User.email == "new@example.com").first()
+    assert user is not None
+    assert request.session["user_id"] == user.id

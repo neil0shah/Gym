@@ -12,11 +12,14 @@ before anything — pages or API — is reachable. Each account's data
 (exercises, groups, workout history) is completely separate from every
 other account's.
 
-To let someone else use the same deployment with their own separate data,
-add them with `python3 -m app.create_user <email>` (see app/create_user.py
-and the README) — there's no public signup page. This app has no email
-verification, password reset, or login rate limiting, so every account is
-created deliberately by the owner rather than through open registration.
+Anyone with the deployment's URL can create their own separate account at
+/signup — their data is fully isolated from every other account's from the
+moment it's created. There's no email verification, password reset, or
+login-attempt rate limiting, so don't share the URL anywhere you wouldn't
+want a stranger to make themselves an account (a made-up email is enough).
+An account can also be created on someone's behalf without them visiting
+/signup themselves, via `python3 -m app.create_user <email>` (see
+app/create_user.py and the README).
 """
 import os
 
@@ -34,7 +37,7 @@ AUTH_ENABLED = bool(AUTH_EMAIL and AUTH_PASSWORD_HASH)
 
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 90  # 90 days — "stay logged in"
 
-_EXEMPT_PATHS = {"/login", "/logout"}
+_EXEMPT_PATHS = {"/login", "/logout", "/signup"}
 
 # Fixed account used for every request when login is disabled, so unscoped
 # local/dev usage still has a concrete user_id to hang data off of.
@@ -44,6 +47,34 @@ LOCAL_USER_EMAIL = "local@localhost"
 class NotAuthenticated(Exception):
     """Raised by require_login for page routes; the registered exception
     handler turns this into a redirect to /login (see app/main.py)."""
+
+
+class SignupError(Exception):
+    """A problem with a signup attempt that should be shown back to the
+    user on the signup page, as opposed to a genuine server error."""
+
+
+def create_account(db: DBSession, email: str, password: str) -> models.User:
+    """Create a brand-new, fully isolated account and seed its default
+    exercise list. Raises SignupError for anything the signup page should
+    display back to the user (bad email, weak password, email taken)."""
+    from app import seed_data  # local import: avoids a circular import at module load
+
+    email = email.strip().lower()
+    if "@" not in email or email.startswith("@") or email.endswith("@"):
+        raise SignupError("Enter a valid email address.")
+    if len(password) < 8:
+        raise SignupError("Password must be at least 8 characters.")
+    if db.query(models.User).filter(models.User.email == email).first() is not None:
+        raise SignupError("An account with that email already exists.")
+
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode()
+    user = models.User(email=email, password_hash=password_hash)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    seed_data.seed_if_empty(db, user_id=user.id)
+    return user
 
 
 def bootstrap_owner_and_seed(db: DBSession) -> None:

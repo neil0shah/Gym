@@ -206,25 +206,28 @@ env vars ever create.
 
 Every account's exercises, groups, and workout history are completely
 separate — nothing is shared between accounts, even when two people log the
-same exercise name (each account has its own copy, not a shared row). To add
-a second login, run this once from the project root, in the same environment
-the app itself runs in (the PythonAnywhere console, or `fly ssh console` on
+same exercise name (each account has its own copy, not a shared row).
+
+**Anyone with the deployment's URL can create their own account** at
+`/signup` — email, password, done, they're logged in and seeded with the
+same default exercise list a fresh deployment starts with. There's a link to
+it right on the login page. Since there's no email verification, password
+reset, or login-attempt rate limiting, a made-up email is enough to sign up
+— fine for handing the link to people you know, but don't post the URL
+somewhere public unless you're fine with strangers making themselves an
+account (their data still can't touch yours or anyone else's).
+
+Prefer to set someone's account up yourself instead of sending them to
+`/signup`? Run this once from the project root, in the same environment the
+app itself runs in (the PythonAnywhere console, or `fly ssh console` on
 Fly.io):
 
 ```bash
 python3 -m app.create_user friend@example.com
 ```
 
-It'll ask for a password (not shown as you type, never sent anywhere), create
-the account, and seed it with the same default exercise list a fresh
-deployment starts with. They can log in immediately at the same URL with
-that email and password, and will only ever see their own data.
-
-There's deliberately no public signup page — every account is created this
-way, by whoever runs the app. This app has no email verification, password
-reset, or login-attempt rate limiting, which would all be expected of a
-public signup flow; keeping account creation to a deliberate one-line command
-is what makes skipping those reasonable for something this small.
+It'll ask for a password (not shown as you type, never sent anywhere) and
+create the account the same way `/signup` does.
 
 Already deployed and used by just you? Nothing changes — your existing data
 migrates automatically to your own account the first time the app starts

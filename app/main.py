@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session as DBSession
 from app.database import Base, engine, get_db, run_migrations
 from app import models, schemas
 from app.auth import (
-    AUTH_ENABLED, NotAuthenticated, SESSION_MAX_AGE_SECONDS,
-    bootstrap_owner_and_seed, get_current_user, not_authenticated_handler,
-    require_login, verify_credentials,
+    AUTH_ENABLED, NotAuthenticated, SESSION_MAX_AGE_SECONDS, SignupError,
+    bootstrap_owner_and_seed, create_account, get_current_user,
+    not_authenticated_handler, require_login, verify_credentials,
 )
 from app.lookup import get_known_exercises, get_split_config, get_workout_types
 from app.parser import parse_notes
@@ -83,6 +83,34 @@ def login_submit(
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login", status_code=302)
+
+
+@app.get("/signup")
+def signup_page(request: Request):
+    if not AUTH_ENABLED:
+        return RedirectResponse(url="/import", status_code=302)
+    return templates.TemplateResponse("signup.html", {"request": request, "error": None})
+
+
+@app.post("/signup")
+def signup_submit(
+    request: Request, email: str = Form(...), password: str = Form(...),
+    confirm_password: str = Form(...), db: DBSession = Depends(get_db),
+):
+    if not AUTH_ENABLED:
+        return RedirectResponse(url="/import", status_code=302)
+    if password != confirm_password:
+        return templates.TemplateResponse(
+            "signup.html", {"request": request, "error": "Passwords don't match."}, status_code=400,
+        )
+    try:
+        user = create_account(db, email, password)
+    except SignupError as e:
+        return templates.TemplateResponse(
+            "signup.html", {"request": request, "error": str(e)}, status_code=400,
+        )
+    request.session["user_id"] = user.id
+    return RedirectResponse(url="/import", status_code=302)
 
 
 # ---------------------------------------------------------------------------

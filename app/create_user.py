@@ -1,4 +1,8 @@
-"""One-time script for the account owner to add another login.
+"""Create an account on someone's behalf, without them visiting /signup.
+
+Anyone with the deployment's URL can already create their own account at
+/signup — this script exists for creating one yourself instead (e.g. you
+want to hand someone a working login rather than ask them to sign up).
 
 Run from the project root, with the app's dependencies already installed
 (the same environment you run the app itself in):
@@ -10,11 +14,6 @@ account, and seeds it with the same default exercise list a fresh
 deployment starts with. The new account's data — exercises, groups,
 workout history — is completely separate from every other account's;
 nothing is shared.
-
-There's no public signup page on purpose: this app has no email
-verification, password reset, or login-attempt rate limiting, so every
-account is created deliberately by whoever runs this script, not through
-open registration.
 """
 import getpass
 import sys
