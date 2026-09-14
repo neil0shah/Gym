@@ -85,14 +85,32 @@ function renderGroups() {
 
 function renderExercises() {
     exercisesTableBody.innerHTML = '';
+    // Ungrouped first (still the ones most worth triaging), then clustered by
+    // group name so splitting/fixing one group at a time never means
+    // scrolling to find its other members scattered alphabetically by
+    // exercise name.
     const sorted = [...exercises].sort((a, b) => {
         if (!!a.group_id !== !!b.group_id) return a.group_id ? 1 : -1;
+        if (a.group_id && b.group_id) {
+            const byGroup = (a.group_name || '').localeCompare(b.group_name || '');
+            if (byGroup !== 0) return byGroup;
+        }
         return a.name.localeCompare(b.name);
     });
     const groupOptions = '<option value="">— (none)</option>' +
         groups.map((g) => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');
 
+    let lastGroupKey = undefined;
     sorted.forEach((e) => {
+        const groupKey = e.group_id || 'ungrouped';
+        if (groupKey !== lastGroupKey) {
+            const divider = document.createElement('tr');
+            divider.className = 'group-divider';
+            divider.innerHTML = `<td colspan="5">${e.group_id ? escapeHtml(e.group_name) : 'Ungrouped'}</td>`;
+            exercisesTableBody.appendChild(divider);
+            lastGroupKey = groupKey;
+        }
+
         const tr = document.createElement('tr');
         if (!e.group_id) tr.classList.add('unrecognized');
         tr.innerHTML = `

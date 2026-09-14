@@ -182,6 +182,19 @@ table.exercise-table {
     background: rgba(217, 164, 65, 0.08);
 }
 
+#exercises-table tbody tr.group-divider td {
+    padding: 10px 8px 4px;
+    border-bottom: none;
+    color: var(--text-dim);
+    font-size: 0.78em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+#exercises-table tbody tr.group-divider:first-child td {
+    padding-top: 4px;
+}
+
 .exercise-row.unrecognized .ex-weight-type {
     border-color: var(--warn);
 }
