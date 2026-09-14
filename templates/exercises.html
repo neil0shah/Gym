@@ -4,48 +4,54 @@
 {% block content %}
 <h1>Manage Exercises</h1>
 <p class="hint">Different names/machines for the same movement (e.g. "Flat chest press" and "Barbell bench press")
-    split your progress trends across names. Group them here so charts on the Progress page combine them into one
-    continuous trend. This doesn't change any saved data — it only changes how exercises are grouped for charting.</p>
+    split your progress trends across names. Tag them as the same <strong>Exercise Variation</strong> here so charts
+    on the Progress page combine them into one continuous trend — keep genuinely different variations (e.g. Preacher
+    Curl vs. Dumbbell Bicep Curl) as separate variations even if they train the same muscle, since their numbers
+    aren't comparable. This doesn't change any saved data — it only changes how exercises are grouped for charting.
+    <strong>Muscle Group</strong> (below, on each exercise) is a separate, informal tag — e.g. "Biceps" — for your own
+    reference; it doesn't affect any chart today.</p>
 
 <section class="chart-section">
-    <h2>Existing groups</h2>
+    <h2>Existing exercise variations</h2>
     <table class="pr-table" id="groups-table">
-        <thead><tr><th>Group</th><th>Members</th><th></th></tr></thead>
+        <thead><tr><th>Exercise Variation</th><th>Members</th><th></th></tr></thead>
         <tbody></tbody>
     </table>
-    <p class="hint">Click a group name to rename it.</p>
-    <p class="hint" id="no-groups-msg" hidden>No groups yet — select exercises below and create one.</p>
+    <p class="hint">Click a variation's name to rename it.</p>
+    <p class="hint" id="no-groups-msg" hidden>No exercise variations yet — select exercises below and create one.</p>
 </section>
 
 <section class="chart-section">
     <h2>All exercises</h2>
     <div class="actions">
-        <input type="text" id="new-group-name" placeholder="New group name">
-        <button id="create-group-btn" class="primary">Create group from selected</button>
+        <input type="text" id="new-group-name" placeholder="New exercise variation name">
+        <button id="create-group-btn" class="primary">Create variation from selected</button>
     </div>
     <div class="actions">
-        <select id="existing-group-select"><option value="">Add selected to existing group…</option></select>
+        <select id="existing-group-select"><option value="">Add selected to existing variation…</option></select>
         <button id="add-to-group-btn">Add</button>
-        <button id="ungroup-btn">Remove selected from their group</button>
+        <button id="ungroup-btn">Remove selected from their variation</button>
         <span id="exercises-status" class="status"></span>
     </div>
-    <p class="hint">Listed ungrouped-first, then clustered by group so you can work through one group at a time.
-        Rows highlighted amber have no group yet — the most useful ones to sort first. Click an exercise's name to
-        see every date it was logged, with the raw weight/reps behind the charts. To split a group, check the
-        exercises that belong apart from it and either create a new group from them or move them to an existing one
-        below.</p>
+    <p class="hint">Listed unassigned-first, then clustered by exercise variation so you can work through one at a
+        time. Rows highlighted amber have no variation yet — the most useful ones to sort first. Click an exercise's
+        name to see every date it was logged, with the raw weight/reps behind the charts. To split a variation, check
+        the exercises that belong apart from it and either create a new variation from them or move them to an
+        existing one below. Muscle Group is a free-text field you can type directly into each row.</p>
     <table class="exercise-table" id="exercises-table">
         <thead>
             <tr>
                 <th><input type="checkbox" id="select-all"></th>
                 <th>Exercise</th>
                 <th>Weight type</th>
-                <th title="Check if THIS exact exercise name's recorded weight is a combined load shared across both arms/legs, so it's halved to compare against a single-side variant of the same movement. Applies per exact name, not per group — check every spelling/variant that was recorded as a combined weight (e.g. both 'Preacher curl' and 'Preacher curls' if both refer to the same two-arm machine).">Combined?</th>
-                <th>Group</th>
+                <th title="Check if THIS exact exercise name's recorded weight is a combined load shared across both arms/legs, so it's halved to compare against a single-side variant of the same movement. Applies per exact name, not per exercise variation — check every spelling/variant that was recorded as a combined weight (e.g. both 'Preacher curl' and 'Preacher curls' if both refer to the same two-arm machine).">Combined?</th>
+                <th>Muscle Group</th>
+                <th>Exercise Variation</th>
             </tr>
         </thead>
         <tbody></tbody>
     </table>
+    <datalist id="muscle-group-options"></datalist>
 </section>
 
 <div class="modal-overlay" id="history-modal-overlay" hidden>
@@ -59,5 +65,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/js/exercises.js"></script>
+<script src="/static/js/exercises.js?v={{ static_version }}"></script>
 {% endblock %}

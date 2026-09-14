@@ -28,7 +28,7 @@ async function loadFilterOptions() {
     // Grouped exercises (see Manage Exercises) show up as one combined entry;
     // only ungrouped exercises are listed individually.
     const groupOptions = groups
-        .map((g) => `<option value="group:${g.id}">${g.name} (group)</option>`)
+        .map((g) => `<option value="group:${g.id}">${g.name} (variation)</option>`)
         .join('');
     const ungroupedOptions = exercises
         .filter((e) => !e.group_id)

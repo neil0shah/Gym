@@ -1,4 +1,5 @@
 import os
+import uuid
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import List, Optional
@@ -45,6 +46,11 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["auth_enabled"] = AUTH_ENABLED
+# Appended to our own static asset URLs (?v=...) so a new deploy always gets
+# a fresh URL for changed CSS/JS — otherwise browsers can keep serving a
+# cached copy of an old file indefinitely after a redeploy, since neither
+# the filename nor its request path ever changes on its own.
+templates.env.globals["static_version"] = uuid.uuid4().hex[:10]
 
 
 @app.on_event("startup")
@@ -316,6 +322,8 @@ def api_update_exercise(
         exercise.bar_weight = req.bar_weight
     if req.combined_both_sides is not None:
         exercise.combined_both_sides = req.combined_both_sides
+    if "category" in req.model_fields_set:
+        exercise.category = req.category.strip() if req.category and req.category.strip() else None
     if "group_id" in req.model_fields_set:
         if req.group_id is not None:
             group = db.query(models.ExerciseGroup).filter(

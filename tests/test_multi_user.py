@@ -242,6 +242,52 @@ def test_update_exercise_cannot_assign_another_users_group(db, two_users):
     assert ex.group_id is None
 
 
+def test_update_exercise_can_set_and_clear_muscle_group(db, two_users):
+    alice, bob = two_users
+    _log_one_set(db, alice, "Preacher curl", 100, 8, date(2024, 1, 1))
+    ex = db.query(models.Exercise).filter(models.Exercise.user_id == alice.id).one()
+
+    updated = main_module.api_update_exercise(
+        ex.id, schemas.ExerciseUpdate(category="Biceps"), db=db, current_user=alice,
+    )
+    assert updated.category == "Biceps"
+
+    cleared = main_module.api_update_exercise(
+        ex.id, schemas.ExerciseUpdate(category=None), db=db, current_user=alice,
+    )
+    assert cleared.category is None
+
+
+def test_update_exercise_omitting_category_leaves_it_untouched(db, two_users):
+    alice, bob = two_users
+    _log_one_set(db, alice, "Preacher curl", 100, 8, date(2024, 1, 1))
+    ex = db.query(models.Exercise).filter(models.Exercise.user_id == alice.id).one()
+    main_module.api_update_exercise(
+        ex.id, schemas.ExerciseUpdate(category="Biceps"), db=db, current_user=alice,
+    )
+
+    updated = main_module.api_update_exercise(
+        ex.id, schemas.ExerciseUpdate(combined_both_sides=True), db=db, current_user=alice,
+    )
+    assert updated.category == "Biceps"
+
+
+def test_update_exercise_category_strips_whitespace_and_blanks_out(db, two_users):
+    alice, bob = two_users
+    _log_one_set(db, alice, "Preacher curl", 100, 8, date(2024, 1, 1))
+    ex = db.query(models.Exercise).filter(models.Exercise.user_id == alice.id).one()
+
+    updated = main_module.api_update_exercise(
+        ex.id, schemas.ExerciseUpdate(category="  Biceps  "), db=db, current_user=alice,
+    )
+    assert updated.category == "Biceps"
+
+    blanked = main_module.api_update_exercise(
+        ex.id, schemas.ExerciseUpdate(category="   "), db=db, current_user=alice,
+    )
+    assert blanked.category is None
+
+
 def test_exercise_history_orders_newest_first_with_raw_sets(db, two_users):
     alice, bob = two_users
     _log_one_set(db, alice, "Bench press", 135, 8, date(2024, 1, 1))

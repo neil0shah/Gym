@@ -285,30 +285,62 @@ persistent volume at the same path before the app's first request there
 (or stop the deployed app, replace its `data/gym.db`, restart it). There's
 no export/import tool for this today — it's a file copy.
 
+### Why a redeploy sometimes looked like it didn't do anything
+
+Every page's CSS/JS link includes a `?v=<random>` query string
+(`static_version` in `app/main.py`, regenerated once per process start).
+Without it, a browser that already cached `style.css` or `exercises.js`
+before a deploy has no reason to ask for it again after one — the page's own
+HTML always renders fresh, but a stale cached script can silently keep
+running underneath it, showing old behavior even though the server has the
+new code. Restarting the app (a `Reload`, i.e. a new process) changes the
+version string, which changes every asset's URL, which is what actually
+forces a fresh fetch — no manual cache-clearing needed from here on.
+
 ## Grouping exercises for trend continuity
 
-Different names or machines for the same movement (e.g. "Flat chest press"
-vs. "Barbell bench press", or "Dumbbell curl" vs. "Preacher curl") split
-progress trends across names by default, since each is stored as its own
-`exercises` row. The **Manage Exercises** page (`/exercises`) lists every
-exercise name the parser has ever seen and lets you group any of them
-together; the Progress page's exercise dropdown then shows each group as one
-combined entry, aggregating the weight/1RM trend, reps-at-weight, and volume
-charts across every exercise in the group. Grouping only changes how charts
-aggregate — it never edits or merges the underlying saved sets. Four groups
-are seeded from the exact pairs given at kickoff (Chest Press, Incline Chest
-Press, Shoulder Press, Bicep Curl) in `app/seed_data.py`; add more as you
-find other historical naming variants during backfill — the Manage Exercises
-page is meant to be a preliminary pass you can run before (or during) a big
-backfill, not a one-time setup step. Group names are editable inline right
-in that table (click and type), and the exercise list only shows exercises
-you've actually logged data for — nothing from the seed defaults you haven't
-used — with ungrouped ones sorted first and highlighted amber, since those
-are the ones worth triaging. Each row's **Group** column is its own dropdown
-— pick a different group, or "— (none)" to ungroup, and it saves immediately
-with no separate button. Click an exercise's **name** to drill into the raw
-data behind its charts: every date it was logged, with the exact weight and
-reps recorded per set, newest first.
+Different names or machines for the exact same movement (e.g. "Flat chest
+press" vs. "Barbell bench press") split progress trends across names by
+default, since each is stored as its own `exercises` row. The **Manage
+Exercises** page (`/exercises`) lists every exercise name the parser has ever
+seen and lets you tag any of them as the same **Exercise Variation**
+(labeled "Group" in the API/database — `ExerciseGroup`/`group_id` — but shown
+as "Exercise Variation" throughout the UI, since that's what it actually
+represents); the Progress page's exercise dropdown then shows each variation
+as one combined entry, aggregating the weight/1RM trend, reps-at-weight, and
+volume charts across every exercise in it. Only combine exercises whose
+*numbers* are actually comparable — "Dumbbell curl" and "Preacher curl" both
+train biceps but load very differently, so they should stay separate
+variations even though they're related; combining them would make the chart
+show a trend that never happened. Grouping only changes how charts aggregate
+— it never edits or merges the underlying saved sets.
+
+Four variations are seeded from the exact pairs given at kickoff (Chest
+Press, Incline Chest Press, Shoulder Press, Bicep Curl) in
+`app/seed_data.py`; add more, split existing ones, or rename them as you find
+other historical naming variants during backfill — the Manage Exercises page
+is meant to be a preliminary pass you can run before (or during) a big
+backfill, not a one-time setup step. Variation names are editable inline
+right in that table (click and type), and the exercise list only shows
+exercises you've actually logged data for — nothing from the seed defaults
+you haven't used — listed unassigned-first (highlighted amber, since those
+are the ones worth triaging), then clustered by variation with a small
+section header, so you can work through one variation at a time instead of
+hunting through an alphabetical list. Each row's **Exercise Variation**
+column is its own dropdown — pick a different variation, or "— (none)" to
+unassign, and it saves immediately with no separate button; to split an
+existing variation, check the exercises that belong apart from it (now easy
+to find, since they're all clustered together) and either create a new
+variation from them or move them to an existing one via the controls above
+the table. Click an exercise's **name** to drill into the raw data behind
+its charts: every date it was logged, with the exact weight and reps
+recorded per set, newest first.
+
+Each row also has a free-text **Muscle Group** tag (e.g. "Biceps",
+"Triceps") — a separate, informal layer from Exercise Variation, for your
+own reference only; it doesn't feed into any chart today. It's backed by the
+`category` column on `exercises`, typed directly into the table with
+autocomplete from muscle groups you've already used elsewhere.
 
 ### Normalizing bilateral vs. unilateral variants within a group
 

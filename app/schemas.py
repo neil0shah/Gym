@@ -96,11 +96,13 @@ class ExerciseUpdate(BaseModel):
     weight_type: Optional[str] = None
     bar_weight: Optional[float] = None
     combined_both_sides: Optional[bool] = None
-    # Optional[int] = None is ambiguous between "leave alone" and "clear the
-    # group" — the route distinguishes the two via `model_fields_set`, so
-    # only send this key at all when you mean to change it (a JSON null
-    # clears the group; omitting the key entirely leaves it untouched).
+    # Optional[int]/[str] = None is ambiguous between "leave alone" and
+    # "clear the field" — the route distinguishes the two via
+    # `model_fields_set`, so only send these keys at all when you mean to
+    # change them (a JSON null clears the field; omitting the key entirely
+    # leaves it untouched).
     group_id: Optional[int] = None
+    category: Optional[str] = None  # informal "Muscle Group" tag, e.g. "Biceps"
 
 
 class ExerciseHistorySet(BaseModel):
