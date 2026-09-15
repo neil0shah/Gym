@@ -225,14 +225,13 @@ async function refreshVolumeChart(filters) {
     volumeChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: points.map((p) => p.period_start),
             datasets: [{
                 label: 'Volume (weight x reps)',
-                data: points.map((p) => Math.round(p.total_volume)),
+                data: points.map((p) => ({ x: toTimestamp(p.period_start), y: Math.round(p.total_volume) })),
                 backgroundColor: PALETTE[0],
             }],
         },
-        options: chartOptions('Volume'),
+        options: timeBarChartOptions('Volume'),
     });
 }
 
@@ -247,14 +246,13 @@ async function refreshFrequencyChart(filters) {
     frequencyChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: points.map((p) => p.period_start),
             datasets: [{
                 label: 'Sessions',
-                data: points.map((p) => p.session_count),
+                data: points.map((p) => ({ x: toTimestamp(p.period_start), y: p.session_count })),
                 backgroundColor: PALETTE[2],
             }],
         },
-        options: chartOptions('Sessions'),
+        options: timeBarChartOptions('Sessions'),
     });
 }
 
@@ -267,6 +265,34 @@ function chartOptions(yLabel) {
         },
         scales: {
             x: { ticks: { color: '#9aa3b2' }, grid: { color: '#2a2f3a' } },
+            y: {
+                ticks: { color: '#9aa3b2' },
+                grid: { color: '#2a2f3a' },
+                title: { display: true, text: yLabel, color: '#9aa3b2' },
+            },
+        },
+    };
+}
+
+// Volume/Frequency bars are one per period (week or month) that actually had
+// logged data — periods with nothing logged simply have no bar. Positioning
+// bars by real calendar time (instead of evenly, one per label) means a
+// stretch with no training shows up as empty space between bars, the same
+// gap visibility as the Per-Exercise Progress line chart.
+function timeBarChartOptions(yLabel) {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { labels: { color: '#e6e9ef' } },
+            tooltip: { callbacks: { title: (items) => formatTimestamp(items[0].parsed.x) } },
+        },
+        scales: {
+            x: {
+                type: 'linear',
+                ticks: { color: '#9aa3b2', callback: formatTimestamp },
+                grid: { color: '#2a2f3a' },
+            },
             y: {
                 ticks: { color: '#9aa3b2' },
                 grid: { color: '#2a2f3a' },
