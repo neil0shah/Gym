@@ -17,6 +17,53 @@ const WEIGHT_TYPE_LABELS = {
     bodyweight_fixed: 'Bodyweight (fixed estimate)',
 };
 
+// Curated so the common muscle groups always get the same recognizable
+// color; anything else typed gets a deterministic (not random) color from
+// the same palette, picked by hashing the text, so it's still consistent
+// across reloads without needing to curate every possible name.
+const MUSCLE_GROUP_PALETTE = [
+    { name: 'legs', r: 91, g: 157, b: 255 },
+    { name: 'quads', r: 91, g: 157, b: 255 },
+    { name: 'triceps', r: 224, g: 149, b: 79 },
+    { name: 'biceps', r: 217, g: 164, b: 65 },
+    { name: 'chest', r: 224, g: 97, b: 107 },
+    { name: 'back', r: 76, g: 175, b: 125 },
+    { name: 'shoulders', r: 166, g: 124, b: 224 },
+    { name: 'core', r: 79, g: 195, b: 201 },
+    { name: 'abs', r: 79, g: 195, b: 201 },
+    { name: 'glutes', r: 224, g: 132, b: 192 },
+    { name: 'hamstrings', r: 91, g: 200, b: 224 },
+    { name: 'calves', r: 176, g: 137, b: 104 },
+    { name: 'forearms', r: 163, g: 217, b: 91 },
+    { name: 'traps', r: 124, g: 142, b: 224 },
+];
+const MUSCLE_GROUP_INDEX_BY_NAME = Object.fromEntries(
+    MUSCLE_GROUP_PALETTE.map((c, i) => [c.name, i])
+);
+
+function hashString(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+}
+
+function colorForMuscleGroup(rawName) {
+    const key = (rawName || '').trim().toLowerCase();
+    if (!key) return null;
+    const idx = key in MUSCLE_GROUP_INDEX_BY_NAME
+        ? MUSCLE_GROUP_INDEX_BY_NAME[key]
+        : hashString(key) % MUSCLE_GROUP_PALETTE.length;
+    const c = MUSCLE_GROUP_PALETTE[idx];
+    return { bg: `rgba(${c.r}, ${c.g}, ${c.b}, 0.22)`, fg: `rgb(${c.r}, ${c.g}, ${c.b})` };
+}
+
+function applyMuscleGroupColor(input) {
+    const color = colorForMuscleGroup(input.value);
+    input.style.background = color ? color.bg : '';
+    input.style.color = color ? color.fg : '';
+    input.style.borderColor = color ? color.fg : '';
+}
+
 let exercises = [];
 let groups = [];
 
@@ -99,6 +146,8 @@ function renderExercises() {
     });
     const groupOptions = '<option value="">— (none)</option>' +
         groups.map((g) => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');
+    const weightTypeOptions = Object.entries(WEIGHT_TYPE_LABELS)
+        .map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
 
     const muscleGroupOptions = document.getElementById('muscle-group-options');
     const distinctCategories = [...new Set(exercises.map((e) => e.category).filter(Boolean))].sort();
@@ -120,12 +169,14 @@ function renderExercises() {
         tr.innerHTML = `
             <td><input type="checkbox" class="ex-checkbox" data-id="${e.id}"></td>
             <td><button type="button" class="ex-name-link" data-id="${e.id}">${escapeHtml(e.name)}</button></td>
-            <td>${WEIGHT_TYPE_LABELS[e.weight_type] || e.weight_type}</td>
+            <td><select class="ex-weight-type-select" data-id="${e.id}">${weightTypeOptions}</select></td>
             <td><input type="checkbox" class="ex-combined-checkbox" data-id="${e.id}" ${e.combined_both_sides ? 'checked' : ''}></td>
             <td><input type="text" class="ex-category-input" list="muscle-group-options" data-id="${e.id}" value="${escapeHtml(e.category || '')}" placeholder="e.g. Biceps"></td>
             <td><select class="ex-group-select" data-id="${e.id}">${groupOptions}</select></td>
         `;
         tr.querySelector('.ex-group-select').value = e.group_id || '';
+        tr.querySelector('.ex-weight-type-select').value = e.weight_type;
+        applyMuscleGroupColor(tr.querySelector('.ex-category-input'));
         exercisesTableBody.appendChild(tr);
     });
     selectAllCheckbox.checked = false;
@@ -149,11 +200,13 @@ function renderExercises() {
     });
 
     exercisesTableBody.querySelectorAll('.ex-category-input').forEach((input) => {
+        input.addEventListener('input', () => applyMuscleGroupColor(input));
+
         const saveIfChanged = async () => {
             const id = input.dataset.id;
             const newValue = input.value.trim();
             const ex = exercises.find((e) => e.id === parseInt(id, 10));
-            if (ex && newValue === (ex.category || '')) return;
+            if (ex && newValue === (ex.category || '')) { applyMuscleGroupColor(input); return; }
             const resp = await fetch(`/api/exercises/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -162,9 +215,11 @@ function renderExercises() {
             if (!resp.ok) {
                 setStatus('Failed to update muscle group: ' + await resp.text(), true);
                 if (ex) input.value = ex.category || '';
+                applyMuscleGroupColor(input);
                 return;
             }
             if (ex) ex.category = newValue || null;
+            applyMuscleGroupColor(input);
             setStatus('Updated.', false);
             // Refresh the autocomplete list with any newly-typed value, but
             // don't re-render the whole table (would lose focus mid-edit).
@@ -175,6 +230,25 @@ function renderExercises() {
         input.addEventListener('blur', saveIfChanged);
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') input.blur();
+        });
+    });
+
+    exercisesTableBody.querySelectorAll('.ex-weight-type-select').forEach((select) => {
+        select.addEventListener('change', async () => {
+            const id = select.dataset.id;
+            const resp = await fetch(`/api/exercises/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ weight_type: select.value }),
+            });
+            if (!resp.ok) {
+                setStatus('Failed to update weight type: ' + await resp.text(), true);
+                await loadAll();
+                return;
+            }
+            const ex = exercises.find((e) => e.id === parseInt(id, 10));
+            if (ex) ex.weight_type = select.value;
+            setStatus('Updated.', false);
         });
     });
 

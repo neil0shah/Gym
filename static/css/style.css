@@ -325,9 +325,26 @@ input, select {
     text-decoration-color: var(--accent);
 }
 
-.ex-group-select {
+.ex-group-select,
+.ex-weight-type-select {
     width: 100%;
     min-width: 140px;
+}
+
+.ex-category-input {
+    width: auto;
+    min-width: 90px;
+    max-width: 100%;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.85em;
+    padding: 4px 12px;
+    text-align: center;
+    transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+.ex-category-input::placeholder {
+    font-weight: 400;
+    color: var(--text-dim);
 }
 
 .modal-overlay {

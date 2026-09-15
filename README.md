@@ -340,7 +340,15 @@ Each row also has a free-text **Muscle Group** tag (e.g. "Biceps",
 "Triceps") — a separate, informal layer from Exercise Variation, for your
 own reference only; it doesn't feed into any chart today. It's backed by the
 `category` column on `exercises`, typed directly into the table with
-autocomplete from muscle groups you've already used elsewhere.
+autocomplete from muscle groups you've already used elsewhere. It's also
+color-coded: common names (Legs, Quads, Chest, Back, Shoulders, Biceps,
+Triceps, Core/Abs, Glutes, Hamstrings, Calves, Forearms, Traps) get a fixed,
+recognizable color from a small curated palette (`MUSCLE_GROUP_PALETTE` in
+`static/js/exercises.js`); anything else you type still gets a consistent
+color, deterministically picked from that same palette by hashing the text,
+so the same custom tag always renders the same color without needing to be
+added to the list by hand. **Weight type** is also editable right in the
+table via its own dropdown, same as Exercise Variation and Combined?.
 
 ### Normalizing bilateral vs. unilateral variants within a group
 
