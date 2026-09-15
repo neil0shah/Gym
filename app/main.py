@@ -600,6 +600,8 @@ def api_progress_group(
 
 
 def _period_start(d: date, period: str) -> date:
+    if period == "day":
+        return d
     if period == "month":
         return d.replace(day=1)
     # default: week, Monday-start
@@ -613,7 +615,7 @@ def api_progress_volume(
     workout_type: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    period: str = Query("week", pattern="^(week|month)$"),
+    period: str = Query("week", pattern="^(day|week|month)$"),
     db: DBSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -650,7 +652,7 @@ def api_progress_frequency(
     workout_type: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    period: str = Query("week", pattern="^(week|month)$"),
+    period: str = Query("week", pattern="^(day|week|month)$"),
     db: DBSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
