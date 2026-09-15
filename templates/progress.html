@@ -30,7 +30,9 @@
 
 <section class="chart-section">
     <h2>Per-Exercise Progress</h2>
-    <p class="hint">Total weight and estimated 1-rep-max (Epley formula) over time.</p>
+    <p class="hint">Total weight and estimated 1-rep-max (Epley formula) over time, spaced by real calendar
+        time — a long stretch between sessions shows up as a wide gap, dashed rather than solid once it passes
+        three weeks with nothing logged, so it reads as a break rather than a smooth trend.</p>
     <div class="chart-wrap"><canvas id="exercise-chart"></canvas></div>
 </section>
 
@@ -57,10 +59,12 @@
 
 <section class="chart-section">
     <h2>PR Tracker</h2>
-    <p class="hint">Best estimated 1-rep-max ever recorded per exercise, with the date it happened.</p>
+    <p class="hint">Best estimated 1-rep-max ever recorded per exercise variation, with the date it happened.
+        Variations grouped together on Manage Exercises share one row here; anything kept as a separate variation
+        (e.g. a dumbbell vs. a machine exercise for the same muscle) gets its own.</p>
     <table id="pr-table" class="pr-table">
         <thead>
-            <tr><th>Exercise</th><th>Best weight</th><th>Reps</th><th>Est. 1RM</th><th>Date</th></tr>
+            <tr><th>Exercise Variation</th><th>Best weight</th><th>Reps</th><th>Est. 1RM</th><th>Date</th></tr>
         </thead>
         <tbody></tbody>
     </table>

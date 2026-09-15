@@ -168,6 +168,8 @@ class FrequencyPoint(BaseModel):
 class PRItem(BaseModel):
     exercise_id: int
     exercise_name: str
+    variation_name: str  # exercise's group name if it's in one, else its own name
+    group_id: Optional[int] = None
     date: date
     weight_recorded: float
     total_weight: float

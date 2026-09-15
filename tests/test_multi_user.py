@@ -300,6 +300,35 @@ def test_exercise_history_orders_newest_first_with_raw_sets(db, two_users):
     assert history[1].sets[0].weight_recorded == 135
 
 
+def test_prs_combine_across_grouped_exercises_but_not_across_variations(db, two_users):
+    alice, bob = two_users
+    # Dumbbell curl and Preacher curl grouped as one variation: PRs merge.
+    _log_one_set(db, alice, "Dumbbell curl", 35, 10, date(2024, 1, 1))
+    _log_one_set(db, alice, "Preacher curl", 100, 8, date(2024, 1, 8))
+    dumbbell = db.query(models.Exercise).filter(models.Exercise.name == "Dumbbell curl").one()
+    preacher = db.query(models.Exercise).filter(models.Exercise.name == "Preacher curl").one()
+    group = main_module.api_create_exercise_group(
+        schemas.ExerciseGroupCreate(name="Bicep Curl", exercise_ids=[dumbbell.id, preacher.id]),
+        db=db, current_user=alice,
+    )
+    # A deliberately separate variation (different equipment, not comparable).
+    _log_one_set(db, alice, "Machine row", 150, 8, date(2024, 1, 9))
+
+    prs = main_module.api_progress_prs(exercise_id=None, db=db, current_user=alice)
+    by_variation = {p.variation_name: p for p in prs}
+
+    assert "Dumbbell curl" not in by_variation
+    assert "Preacher curl" not in by_variation
+    assert "Bicep Curl" in by_variation
+    assert by_variation["Bicep Curl"].group_id == group.id
+    # Preacher curl's 1RM (100lb x8) beats Dumbbell curl's (35lb x10) — the
+    # combined variation's PR should be whichever of its members is higher.
+    assert by_variation["Bicep Curl"].exercise_name == "Preacher curl"
+
+    assert "Machine row" in by_variation
+    assert by_variation["Machine row"].group_id is None
+
+
 def test_exercise_history_scoped_to_owner(db, two_users):
     alice, bob = two_users
     _log_one_set(db, alice, "Squat", 225, 5, date(2024, 1, 1))

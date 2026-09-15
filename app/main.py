@@ -676,15 +676,24 @@ def api_progress_prs(
     if exercise_id is not None:
         query = query.filter(models.Exercise.id == exercise_id)
 
+    # Keyed by exercise variation (the group, if it's in one) rather than by
+    # literal exercise — a dumbbell exercise and a machine exercise grouped
+    # as the same variation should show one PR, but two exercises that are
+    # deliberately kept as separate variations (different equipment, not
+    # comparable numbers) must never be merged into one row.
     best: dict = {}
     for set_row, session_exercise, session, exercise in query.all():
         total_weight = exercise.total_weight_for(set_row.weight_recorded)
         est = epley_1rm(total_weight, set_row.reps_full)
-        current = best.get(exercise.id)
+        variation_key = exercise.group_id if exercise.group_id is not None else f"exercise:{exercise.id}"
+        variation_name = exercise.group.name if exercise.group_id is not None else exercise.name
+        current = best.get(variation_key)
         if current is None or est > current[0] or (est == current[0] and session.date < current[1].date):
-            best[exercise.id] = (est, schemas.PRItem(
+            best[variation_key] = (est, schemas.PRItem(
                 exercise_id=exercise.id,
                 exercise_name=exercise.name,
+                variation_name=variation_name,
+                group_id=exercise.group_id,
                 date=session.date,
                 weight_recorded=set_row.weight_recorded,
                 total_weight=total_weight,
@@ -693,5 +702,5 @@ def api_progress_prs(
             ))
 
     items = [v[1] for v in best.values()]
-    items.sort(key=lambda p: p.exercise_name)
+    items.sort(key=lambda p: p.variation_name)
     return items

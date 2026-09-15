@@ -385,11 +385,13 @@ Implemented (phases 1–3, 5, and part of 6 from the original build plan):
 - Multi-user accounts: opt-in login (`app/auth.py`), each account's
   exercises/groups/history completely isolated from every other account's,
   new accounts added via `python3 -m app.create_user <email>`
-- Progress page: per-exercise weight/est.-1RM trend, reps-at-weight trend,
-  volume-over-time (bar per week/month), workout frequency, and a PR
-  tracker (best estimated 1RM ever per exercise, via the Epley formula),
-  all filterable by exercise-or-group, order-in-session, workout type, and
-  date range
+- Progress page: per-exercise weight/est.-1RM trend (spaced by real calendar
+  time, so a stretch with no sessions shows as a wide dashed gap rather than
+  even spacing — see `GAP_THRESHOLD_DAYS` in `static/js/progress.js`),
+  reps-at-weight trend, volume-over-time (bar per week/month), workout
+  frequency, and a PR tracker (best estimated 1RM ever per exercise
+  variation, via the Epley formula), all filterable by exercise-or-variation,
+  order-in-session, workout type, and date range
 
 Deliberately deferred (flagged as secondary/optional/nice-to-have in the
 original brief, to keep the first pass focused):

@@ -9,6 +9,28 @@ let exerciseChart, repsChart, volumeChart, frequencyChart;
 
 const PALETTE = ['#5b9dff', '#4caf7d', '#d9a441', '#e0616b', '#b083f0', '#3fc1c9', '#f08a5d', '#8ecae6'];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+// A stretch with no logged session longer than this reads as a life event
+// (injury, travel, a break) rather than normal between-session spacing, so
+// the connecting line segment is dashed instead of solid there.
+const GAP_THRESHOLD_DAYS = 21;
+
+function toTimestamp(dateStr) {
+    return new Date(dateStr + 'T00:00:00').getTime();
+}
+
+function formatTimestamp(value) {
+    return new Date(value).toISOString().slice(0, 10);
+}
+
+// Chart.js segment styling: called once per line segment (the span between
+// two adjacent points), so a single dataset can be solid where sessions are
+// close together and dashed across a long real-calendar gap.
+function dashOverGaps(ctx) {
+    const gapDays = (ctx.p1.parsed.x - ctx.p0.parsed.x) / DAY_MS;
+    return gapDays > GAP_THRESHOLD_DAYS ? [6, 6] : undefined;
+}
+
 function qs(params) {
     const usp = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
@@ -108,26 +130,46 @@ async function refreshExerciseCharts(filters) {
     exerciseChart = new Chart(exerciseCtx, {
         type: 'line',
         data: {
-            labels: topSets.map((p) => p.date),
             datasets: [
                 {
                     label: 'Top-set weight',
-                    data: topSets.map((p) => p.total_weight),
+                    data: topSets.map((p) => ({ x: toTimestamp(p.date), y: p.total_weight })),
                     borderColor: PALETTE[0],
                     backgroundColor: PALETTE[0],
                     tension: 0.2,
+                    segment: { borderDash: dashOverGaps },
                 },
                 {
                     label: 'Estimated 1RM',
-                    data: topSets.map((p) => Math.round(p.est_1rm * 10) / 10),
+                    data: topSets.map((p) => ({ x: toTimestamp(p.date), y: Math.round(p.est_1rm * 10) / 10 })),
                     borderColor: PALETTE[1],
                     backgroundColor: PALETTE[1],
-                    borderDash: [4, 3],
                     tension: 0.2,
+                    // Always-dashed dash length doubles as the "big gap" dash so the
+                    // two aren't visually confused with each other.
+                    segment: { borderDash: (ctx) => dashOverGaps(ctx) || [4, 3] },
                 },
             ],
         },
-        options: chartOptions('Weight (lb)'),
+        options: {
+            ...chartOptions('Weight (lb)'),
+            scales: {
+                x: {
+                    type: 'linear',
+                    ticks: { color: '#9aa3b2', callback: formatTimestamp },
+                    grid: { color: '#2a2f3a' },
+                },
+                y: {
+                    ticks: { color: '#9aa3b2' },
+                    grid: { color: '#2a2f3a' },
+                    title: { display: true, text: 'Weight (lb)', color: '#9aa3b2' },
+                },
+            },
+            plugins: {
+                legend: { labels: { color: '#e6e9ef' } },
+                tooltip: { callbacks: { title: (items) => formatTimestamp(items[0].parsed.x) } },
+            },
+        },
     });
 
     // Reps-at-weight: one series per distinct total_weight value.
@@ -239,7 +281,7 @@ async function loadPRTable() {
     const tbody = document.querySelector('#pr-table tbody');
     tbody.innerHTML = prs.map((p) => `
         <tr>
-            <td>${p.exercise_name}</td>
+            <td>${p.variation_name}</td>
             <td>${p.total_weight}</td>
             <td>${p.reps_full}</td>
             <td>${Math.round(p.est_1rm * 10) / 10}</td>
