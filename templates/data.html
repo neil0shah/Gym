@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Data Lookup — Gym Progress Tracker{% endblock %}
+{% block nav_data %}active{% endblock %}
+{% block content %}
+<h1>Data Lookup</h1>
+<p class="hint">Look up exactly what's saved for any date — including the original text you typed, side by side
+    with how it was parsed — and fix it directly if something's wrong. Changes here save immediately; there's no
+    separate "Save" step.</p>
+
+<div class="data-layout">
+    <aside class="data-date-panel">
+        <div class="actions">
+            <input type="date" id="jump-date">
+            <button id="jump-date-btn" class="primary">Go</button>
+        </div>
+        <div class="actions">
+            <button id="prev-date-btn" title="Previous logged date">&larr; Prev</button>
+            <button id="next-date-btn" title="Next logged date">Next &rarr;</button>
+        </div>
+        <input type="text" id="date-filter" placeholder="Filter dates, e.g. 2025-03">
+        <ul class="date-list" id="date-list"></ul>
+    </aside>
+
+    <section class="data-day-panel" id="day-panel">
+        <p class="hint" id="day-empty-msg">Pick a date on the left to see what's logged.</p>
+        <div id="day-sessions"></div>
+    </section>
+</div>
+
+<datalist id="data-workout-type-options"></datalist>
+
+<template id="data-session-template">
+    <div class="session-card">
+        <div class="session-header">
+            <span class="session-title">Session</span>
+            <label>Date <input type="date" class="sess-date"></label>
+            <label>Confidence
+                <select class="sess-confidence">
+                    <option value="confirmed">Confirmed</option>
+                    <option value="estimated">Estimated</option>
+                </select>
+            </label>
+            <label>Workout type
+                <input type="text" class="sess-workout-type" list="data-workout-type-options">
+            </label>
+            <label class="note-field">Note <input type="text" class="sess-note" placeholder="e.g. California - No straps"></label>
+            <button type="button" class="delete-session-btn">Delete session</button>
+        </div>
+        <table class="exercise-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Exercise</th>
+                    <th>Sets (weight / full reps / partial)</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody class="exercise-rows"></tbody>
+        </table>
+        <div class="actions">
+            <select class="add-exercise-select"></select>
+            <button type="button" class="add-exercise-btn">Add exercise</button>
+        </div>
+        <details class="raw-text-toggle" open>
+            <summary>As originally logged</summary>
+            <pre class="raw-text"></pre>
+        </details>
+    </div>
+</template>
+
+<template id="data-exercise-row-template">
+    <tr class="exercise-row">
+        <td><input type="number" class="ex-order tiny" step="1"></td>
+        <td><select class="ex-select"></select></td>
+        <td class="sets-cell"></td>
+        <td>
+            <button type="button" class="add-set-btn" title="Add a set">+ Set</button>
+            <button type="button" class="delete-exercise-btn" title="Remove this exercise from the session">Remove</button>
+        </td>
+    </tr>
+</template>
+
+<template id="data-set-template">
+    <span class="set-group">
+        <input class="set-weight" type="number" step="0.5">
+        <span>x</span>
+        <input class="set-reps-full tiny" type="number" step="1">
+        <span>+</span>
+        <input class="set-reps-partial tiny" type="number" step="1">
+        <button type="button" class="delete-set-btn" title="Remove set">&times;</button>
+    </span>
+</template>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/data.js?v={{ static_version }}"></script>
+{% endblock %}

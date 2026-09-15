@@ -149,6 +149,13 @@ def exercises_page(request: Request, current_user: models.User = Depends(get_cur
     )
 
 
+@app.get("/data")
+def data_page(request: Request, current_user: models.User = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        "data.html", {"request": request, "current_user_email": current_user.email}
+    )
+
+
 # ---------------------------------------------------------------------------
 # Import / parse / save
 # ---------------------------------------------------------------------------
@@ -704,3 +711,245 @@ def api_progress_prs(
     items = [v[1] for v in best.values()]
     items.sort(key=lambda p: p.variation_name)
     return items
+
+
+# ---------------------------------------------------------------------------
+# Data Lookup: view and correct the raw saved data behind a specific date
+# ---------------------------------------------------------------------------
+
+@app.get("/api/logged_dates", response_model=List[date])
+def api_logged_dates(db: DBSession = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    rows = (
+        db.query(models.Session.date)
+        .filter(models.Session.user_id == current_user.id)
+        .distinct()
+        .order_by(models.Session.date.desc())
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
+def _day_session_item(session: models.Session) -> schemas.DaySessionItem:
+    return schemas.DaySessionItem(
+        id=session.id,
+        date=session.date,
+        date_confidence=session.date_confidence,
+        workout_type=session.workout_type,
+        note=session.note,
+        raw_note_text=session.raw_note_text,
+        exercises=[
+            schemas.DaySessionExerciseItem(
+                id=se.id,
+                exercise_id=se.exercise_id,
+                exercise_name=se.exercise.name,
+                order_index=se.order_index,
+                sets=[
+                    schemas.DaySetItem(
+                        id=s.id, set_number=s.set_number, weight_recorded=s.weight_recorded,
+                        reps_full=s.reps_full, reps_partial=s.reps_partial, raw_rep_string=s.raw_rep_string,
+                    )
+                    for s in se.sets
+                ],
+            )
+            for se in session.session_exercises
+        ],
+    )
+
+
+@app.get("/api/days/{on_date}", response_model=List[schemas.DaySessionItem])
+def api_day_sessions(
+    on_date: date, db: DBSession = Depends(get_db), current_user: models.User = Depends(get_current_user),
+):
+    sessions = (
+        db.query(models.Session)
+        .filter(models.Session.user_id == current_user.id, models.Session.date == on_date)
+        .order_by(models.Session.id)
+        .all()
+    )
+    return [_day_session_item(s) for s in sessions]
+
+
+def _get_owned_session(db: DBSession, session_id: int, user_id: int) -> models.Session:
+    session = db.query(models.Session).filter(
+        models.Session.id == session_id, models.Session.user_id == user_id,
+    ).first()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+def _get_owned_session_exercise(db: DBSession, session_exercise_id: int, user_id: int) -> models.SessionExercise:
+    session_exercise = (
+        db.query(models.SessionExercise)
+        .join(models.Session, models.SessionExercise.session_id == models.Session.id)
+        .filter(models.SessionExercise.id == session_exercise_id, models.Session.user_id == user_id)
+        .first()
+    )
+    if session_exercise is None:
+        raise HTTPException(status_code=404, detail="Exercise entry not found")
+    return session_exercise
+
+
+def _get_owned_set(db: DBSession, set_id: int, user_id: int) -> models.SetRecord:
+    set_row = (
+        db.query(models.SetRecord)
+        .join(models.SessionExercise, models.SetRecord.session_exercise_id == models.SessionExercise.id)
+        .join(models.Session, models.SessionExercise.session_id == models.Session.id)
+        .filter(models.SetRecord.id == set_id, models.Session.user_id == user_id)
+        .first()
+    )
+    if set_row is None:
+        raise HTTPException(status_code=404, detail="Set not found")
+    return set_row
+
+
+def _day_session_exercise_item(session_exercise: models.SessionExercise) -> schemas.DaySessionExerciseItem:
+    return schemas.DaySessionExerciseItem(
+        id=session_exercise.id,
+        exercise_id=session_exercise.exercise_id,
+        exercise_name=session_exercise.exercise.name,
+        order_index=session_exercise.order_index,
+        sets=[
+            schemas.DaySetItem(
+                id=s.id, set_number=s.set_number, weight_recorded=s.weight_recorded,
+                reps_full=s.reps_full, reps_partial=s.reps_partial, raw_rep_string=s.raw_rep_string,
+            )
+            for s in session_exercise.sets
+        ],
+    )
+
+
+@app.put("/api/day-sessions/{session_id}", response_model=schemas.DaySessionItem)
+def api_update_day_session(
+    session_id: int, req: schemas.DaySessionUpdate, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    session = _get_owned_session(db, session_id, current_user.id)
+    if req.date is not None:
+        session.date = req.date
+    if "date_confidence" in req.model_fields_set and req.date_confidence is not None:
+        if req.date_confidence not in (models.CONFIRMED, models.ESTIMATED):
+            raise HTTPException(status_code=422, detail="date_confidence must be 'confirmed' or 'estimated'")
+        session.date_confidence = req.date_confidence
+    if "workout_type" in req.model_fields_set:
+        session.workout_type = req.workout_type.strip() if req.workout_type and req.workout_type.strip() else None
+    if "note" in req.model_fields_set:
+        session.note = req.note.strip() if req.note and req.note.strip() else None
+    db.commit()
+    db.refresh(session)
+    return _day_session_item(session)
+
+
+@app.delete("/api/day-sessions/{session_id}")
+def api_delete_day_session(
+    session_id: int, db: DBSession = Depends(get_db), current_user: models.User = Depends(get_current_user),
+):
+    session = _get_owned_session(db, session_id, current_user.id)
+    db.delete(session)
+    db.commit()
+    return {"deleted": True}
+
+
+@app.post("/api/day-sessions/{session_id}/exercises", response_model=schemas.DaySessionExerciseItem)
+def api_add_day_session_exercise(
+    session_id: int, req: schemas.SessionExerciseCreate, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    session = _get_owned_session(db, session_id, current_user.id)
+    exercise = db.query(models.Exercise).filter(
+        models.Exercise.id == req.exercise_id, models.Exercise.user_id == current_user.id,
+    ).first()
+    if exercise is None:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    next_order = max([se.order_index for se in session.session_exercises], default=-1) + 1
+    session_exercise = models.SessionExercise(session_id=session.id, exercise_id=exercise.id, order_index=next_order)
+    db.add(session_exercise)
+    db.commit()
+    db.refresh(session_exercise)
+    return _day_session_exercise_item(session_exercise)
+
+
+@app.put("/api/day-session-exercises/{session_exercise_id}", response_model=schemas.DaySessionExerciseItem)
+def api_update_day_session_exercise(
+    session_exercise_id: int, req: schemas.SessionExerciseUpdate, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    session_exercise = _get_owned_session_exercise(db, session_exercise_id, current_user.id)
+    if req.exercise_id is not None:
+        exercise = db.query(models.Exercise).filter(
+            models.Exercise.id == req.exercise_id, models.Exercise.user_id == current_user.id,
+        ).first()
+        if exercise is None:
+            raise HTTPException(status_code=404, detail="Exercise not found")
+        session_exercise.exercise_id = exercise.id
+    if req.order_index is not None:
+        session_exercise.order_index = req.order_index
+    db.commit()
+    db.refresh(session_exercise)
+    return _day_session_exercise_item(session_exercise)
+
+
+@app.delete("/api/day-session-exercises/{session_exercise_id}")
+def api_delete_day_session_exercise(
+    session_exercise_id: int, db: DBSession = Depends(get_db), current_user: models.User = Depends(get_current_user),
+):
+    session_exercise = _get_owned_session_exercise(db, session_exercise_id, current_user.id)
+    db.delete(session_exercise)
+    db.commit()
+    return {"deleted": True}
+
+
+@app.post("/api/day-session-exercises/{session_exercise_id}/sets", response_model=schemas.DaySetItem)
+def api_add_set(
+    session_exercise_id: int, req: schemas.SetCreate, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    session_exercise = _get_owned_session_exercise(db, session_exercise_id, current_user.id)
+    next_set_number = max([s.set_number for s in session_exercise.sets], default=0) + 1
+    set_row = models.SetRecord(
+        session_exercise_id=session_exercise.id,
+        set_number=next_set_number,
+        weight_recorded=req.weight_recorded,
+        reps_full=req.reps_full,
+        reps_partial=req.reps_partial,
+        raw_rep_string=None,  # manually added, not parsed from anything typed
+    )
+    db.add(set_row)
+    db.commit()
+    db.refresh(set_row)
+    return schemas.DaySetItem(
+        id=set_row.id, set_number=set_row.set_number, weight_recorded=set_row.weight_recorded,
+        reps_full=set_row.reps_full, reps_partial=set_row.reps_partial, raw_rep_string=set_row.raw_rep_string,
+    )
+
+
+@app.put("/api/sets/{set_id}", response_model=schemas.DaySetItem)
+def api_update_set(
+    set_id: int, req: schemas.SetUpdate, db: DBSession = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    set_row = _get_owned_set(db, set_id, current_user.id)
+    if req.weight_recorded is not None:
+        set_row.weight_recorded = req.weight_recorded
+    if req.reps_full is not None:
+        set_row.reps_full = req.reps_full
+    if "reps_partial" in req.model_fields_set:
+        set_row.reps_partial = req.reps_partial
+    if req.set_number is not None:
+        set_row.set_number = req.set_number
+    db.commit()
+    db.refresh(set_row)
+    return schemas.DaySetItem(
+        id=set_row.id, set_number=set_row.set_number, weight_recorded=set_row.weight_recorded,
+        reps_full=set_row.reps_full, reps_partial=set_row.reps_partial, raw_rep_string=set_row.raw_rep_string,
+    )
+
+
+@app.delete("/api/sets/{set_id}")
+def api_delete_set(
+    set_id: int, db: DBSession = Depends(get_db), current_user: models.User = Depends(get_current_user),
+):
+    set_row = _get_owned_set(db, set_id, current_user.id)
+    db.delete(set_row)
+    db.commit()
+    return {"deleted": True}

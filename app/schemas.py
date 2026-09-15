@@ -1,3 +1,4 @@
+import datetime
 from datetime import date
 from typing import List, Optional
 
@@ -163,6 +164,68 @@ class FrequencyPoint(BaseModel):
     period_start: date
     session_count: int
     workout_type: Optional[str] = None
+
+
+class DaySetItem(BaseModel):
+    id: int
+    set_number: int
+    weight_recorded: float
+    reps_full: int
+    reps_partial: Optional[int] = None
+    raw_rep_string: Optional[str] = None  # what was originally typed, for comparison; not editable
+
+
+class DaySessionExerciseItem(BaseModel):
+    id: int
+    exercise_id: int
+    exercise_name: str
+    order_index: int
+    sets: List[DaySetItem]
+
+
+class DaySessionItem(BaseModel):
+    id: int
+    date: date
+    date_confidence: str
+    workout_type: Optional[str] = None
+    note: Optional[str] = None
+    raw_note_text: Optional[str] = None  # the original pasted text, for comparison; not editable
+    exercises: List[DaySessionExerciseItem]
+
+
+class DaySessionUpdate(BaseModel):
+    # Qualified as datetime.date (not the bare `date` import) because a field
+    # literally named "date" with an Optional[date] = None default shadows
+    # the type itself under Pydantic v2's annotation resolution, silently
+    # turning the field into NoneType — see the field's own name for why.
+    date: Optional[datetime.date] = None
+    # workout_type/note: like ExerciseUpdate.category above, omit the key to
+    # leave alone, send an explicit null to clear (model_fields_set).
+    date_confidence: Optional[str] = None
+    workout_type: Optional[str] = None
+    note: Optional[str] = None
+
+
+class SessionExerciseCreate(BaseModel):
+    exercise_id: int
+
+
+class SessionExerciseUpdate(BaseModel):
+    exercise_id: Optional[int] = None
+    order_index: Optional[int] = None
+
+
+class SetCreate(BaseModel):
+    weight_recorded: float = 0
+    reps_full: int = 0
+    reps_partial: Optional[int] = None
+
+
+class SetUpdate(BaseModel):
+    weight_recorded: Optional[float] = None
+    reps_full: Optional[int] = None
+    reps_partial: Optional[int] = None  # always sent explicitly by the UI, so no leave-alone ambiguity here
+    set_number: Optional[int] = None
 
 
 class PRItem(BaseModel):

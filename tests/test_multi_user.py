@@ -338,3 +338,123 @@ def test_exercise_history_scoped_to_owner(db, two_users):
     with pytest.raises(HTTPException) as exc_info:
         main_module.api_exercise_history(bob_ex.id, db=db, current_user=alice)
     assert exc_info.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Data Lookup: raw-data editing endpoints
+# ---------------------------------------------------------------------------
+
+def test_logged_dates_scoped_to_owner(db, two_users):
+    alice, bob = two_users
+    _log_one_set(db, alice, "Squat", 225, 5, date(2024, 1, 1))
+    _log_one_set(db, bob, "Squat", 185, 5, date(2024, 2, 2))
+
+    assert main_module.api_logged_dates(db=db, current_user=alice) == [date(2024, 1, 1)]
+    assert main_module.api_logged_dates(db=db, current_user=bob) == [date(2024, 2, 2)]
+
+
+def test_day_sessions_include_raw_text_and_are_scoped(db, two_users):
+    alice, bob = two_users
+    session = _log_one_set(db, alice, "Squat", 225, 5, date(2024, 1, 1))
+    saved_session = db.query(models.Session).filter(
+        models.Session.id == session.saved_session_ids[0]
+    ).one()
+    saved_session.raw_note_text = "Squat: 225: 5"
+    db.commit()
+
+    on_date = date(2024, 1, 1)
+    alice_days = main_module.api_day_sessions(on_date, db=db, current_user=alice)
+    assert len(alice_days) == 1
+    assert alice_days[0].raw_note_text == "Squat: 225: 5"
+    assert alice_days[0].exercises[0].exercise_name == "Squat"
+    assert alice_days[0].exercises[0].sets[0].weight_recorded == 225
+
+    bob_days = main_module.api_day_sessions(on_date, db=db, current_user=bob)
+    assert bob_days == []
+
+
+def test_cannot_edit_or_delete_another_users_session(db, two_users):
+    alice, bob = two_users
+    save_result = _log_one_set(db, alice, "Squat", 225, 5, date(2024, 1, 1))
+    alice_session_id = save_result.saved_session_ids[0]
+
+    with pytest.raises(HTTPException) as exc_info:
+        main_module.api_update_day_session(
+            alice_session_id, schemas.DaySessionUpdate(note="hacked"), db=db, current_user=bob,
+        )
+    assert exc_info.value.status_code == 404
+
+    with pytest.raises(HTTPException) as exc_info:
+        main_module.api_delete_day_session(alice_session_id, db=db, current_user=bob)
+    assert exc_info.value.status_code == 404
+
+    # Untouched by the rejected attempts.
+    still_there = db.query(models.Session).filter(models.Session.id == alice_session_id).one()
+    assert still_there.note != "hacked"
+
+
+def test_editing_session_date_and_deleting_session(db, two_users):
+    alice, _bob = two_users
+    save_result = _log_one_set(db, alice, "Squat", 225, 5, date(2024, 1, 1))
+    session_id = save_result.saved_session_ids[0]
+
+    updated = main_module.api_update_day_session(
+        session_id, schemas.DaySessionUpdate(date=date(2024, 1, 2), workout_type="Legs"),
+        db=db, current_user=alice,
+    )
+    assert updated.date == date(2024, 1, 2)
+    assert updated.workout_type == "Legs"
+
+    main_module.api_delete_day_session(session_id, db=db, current_user=alice)
+    assert db.query(models.Session).filter(models.Session.id == session_id).first() is None
+
+
+def test_add_edit_and_remove_exercise_and_sets_within_a_session(db, two_users):
+    alice, bob = two_users
+    save_result = _log_one_set(db, alice, "Squat", 225, 5, date(2024, 1, 1))
+    session_id = save_result.saved_session_ids[0]
+    _log_one_set(db, alice, "Bench press", 135, 8, date(2024, 1, 5))  # unrelated, different day
+    bench = db.query(models.Exercise).filter(
+        models.Exercise.user_id == alice.id, models.Exercise.name == "Bench press",
+    ).one()
+
+    # Cannot add another user's exercise to your session.
+    _log_one_set(db, bob, "Deadlift", 315, 3, date(2024, 1, 1))
+    bob_deadlift = db.query(models.Exercise).filter(models.Exercise.user_id == bob.id).one()
+    with pytest.raises(HTTPException):
+        main_module.api_add_day_session_exercise(
+            session_id, schemas.SessionExerciseCreate(exercise_id=bob_deadlift.id), db=db, current_user=alice,
+        )
+
+    added = main_module.api_add_day_session_exercise(
+        session_id, schemas.SessionExerciseCreate(exercise_id=bench.id), db=db, current_user=alice,
+    )
+    assert added.exercise_name == "Bench press"
+    assert added.order_index == 2  # after the existing Squat entry (order_index 1, from _log_one_set)
+    assert added.sets == []
+
+    new_set = main_module.api_add_set(
+        added.id, schemas.SetCreate(weight_recorded=140, reps_full=6), db=db, current_user=alice,
+    )
+    assert new_set.set_number == 1
+    assert new_set.raw_rep_string is None  # manually added, nothing was ever typed for it
+
+    updated_set = main_module.api_update_set(
+        new_set.id, schemas.SetUpdate(weight_recorded=145, reps_partial=2), db=db, current_user=alice,
+    )
+    assert updated_set.weight_recorded == 145
+    assert updated_set.reps_partial == 2
+
+    with pytest.raises(HTTPException):
+        main_module.api_update_set(new_set.id, schemas.SetUpdate(weight_recorded=999), db=db, current_user=bob)
+    with pytest.raises(HTTPException):
+        main_module.api_delete_set(new_set.id, db=db, current_user=bob)
+
+    main_module.api_delete_set(new_set.id, db=db, current_user=alice)
+    with pytest.raises(HTTPException):
+        main_module.api_delete_day_session_exercise(added.id, db=db, current_user=bob)
+    main_module.api_delete_day_session_exercise(added.id, db=db, current_user=alice)
+
+    remaining = main_module.api_day_sessions(date(2024, 1, 1), db=db, current_user=alice)
+    assert len(remaining[0].exercises) == 1
+    assert remaining[0].exercises[0].exercise_name == "Squat"

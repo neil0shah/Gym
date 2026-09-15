@@ -433,3 +433,97 @@ input, select {
     font-variant-numeric: tabular-nums;
 }
 .history-set .set-idx { color: var(--text-dim); }
+
+.data-layout {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.data-date-panel {
+    flex: 0 0 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: sticky;
+    top: 16px;
+}
+.data-date-panel .actions { margin: 0; gap: 8px; }
+.data-date-panel input[type="date"] { flex: 1 1 auto; min-width: 0; }
+#prev-date-btn, #next-date-btn { flex: 1 1 auto; }
+.data-date-panel input[type="text"] { width: 100%; }
+
+.date-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 60vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+}
+.date-list li { border-bottom: 1px solid var(--border); }
+.date-list li:last-child { border-bottom: none; }
+.date-list li.hint { padding: 10px 12px; }
+.date-list-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    padding: 8px 12px;
+    cursor: pointer;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+}
+.date-list-item:hover { background: var(--panel-alt); color: var(--text); }
+.date-list-item.active { background: var(--accent-dim); color: var(--text); font-weight: 600; }
+
+.data-day-panel { flex: 1 1 auto; min-width: 0; }
+
+button.secondary,
+#prev-date-btn, #next-date-btn,
+.add-exercise-btn, .add-set-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.9em;
+    cursor: pointer;
+}
+button.secondary:hover,
+#prev-date-btn:hover, #next-date-btn:hover,
+.add-exercise-btn:hover, .add-set-btn:hover { color: var(--text); border-color: var(--accent); }
+
+.delete-session-btn, .delete-exercise-btn {
+    background: none;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.85em;
+    cursor: pointer;
+}
+.delete-session-btn:hover, .delete-exercise-btn:hover { background: rgba(224, 97, 107, 0.12); }
+
+.delete-set-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 1em;
+    line-height: 1;
+    padding: 0 2px;
+}
+.delete-set-btn:hover { color: var(--danger); }
+
+input.tiny { width: 52px; }
+
+@media (max-width: 800px) {
+    .data-layout { flex-direction: column; }
+    .data-date-panel { flex: none; width: 100%; position: static; }
+    .date-list { max-height: 40vh; }
+}

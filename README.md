@@ -385,13 +385,22 @@ Implemented (phases 1–3, 5, and part of 6 from the original build plan):
 - Multi-user accounts: opt-in login (`app/auth.py`), each account's
   exercises/groups/history completely isolated from every other account's,
   new accounts added via `python3 -m app.create_user <email>`
-- Progress page: per-exercise weight/est.-1RM trend (spaced by real calendar
-  time, so a stretch with no sessions shows as a wide dashed gap rather than
-  even spacing — see `GAP_THRESHOLD_DAYS` in `static/js/progress.js`),
-  reps-at-weight trend, volume-over-time (bar per week/month), workout
-  frequency, and a PR tracker (best estimated 1RM ever per exercise
-  variation, via the Epley formula), all filterable by exercise-or-variation,
+- Progress page: per-exercise weight/est.-1RM trend, volume-over-time, and
+  workout frequency all spaced by real calendar time (so a stretch with no
+  sessions shows as a wide gap rather than even spacing — see
+  `GAP_THRESHOLD_DAYS` in `static/js/progress.js`), plus reps-at-weight
+  trend and a PR tracker (best estimated 1RM ever per exercise variation,
+  via the Epley formula), all filterable by exercise-or-variation,
   order-in-session, workout type, and date range
+- Data Lookup page (`/data`): look up exactly what's saved for any date,
+  side by side with the original text you typed for it, and fix it directly
+  — edit or delete a session's date/confidence/workout type/note, reassign
+  or remove an exercise within it, and add/edit/remove individual sets.
+  Every change saves immediately (no separate Save step). Browse by a date
+  picker with Prev/Next (jumps to the nearest date with something logged)
+  or a filterable list of every date you've ever logged. This is for fixing
+  already-imported data — a date with nothing logged points you to Add /
+  Import instead of letting you build a session from scratch here.
 
 Deliberately deferred (flagged as secondary/optional/nice-to-have in the
 original brief, to keep the first pass focused):
